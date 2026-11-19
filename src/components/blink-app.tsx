@@ -119,6 +119,8 @@ export function BlinkApp() {
   const [vectorLabel, setVectorLabel] = useState<HTMLCanvasElement | null>(null);
   const [tracing, setTracing] = useState(false);
   const [tint, setTint] = useState<string | null>(null);
+  const [cupTint, setCupTint] = useState<string | null>(null);
+  const [inkTarget, setInkTarget] = useState<"logo" | "cup">("logo");
   const [market, setMarket] = useState<Market>("KZ");
   const [lang, setLang] = useState<Lang>("pt");
   const t = text(lang);
@@ -377,6 +379,7 @@ export function BlinkApp() {
                 >
                   <CupView
                     texture={on && chosen ? chosen : null}
+                    body={on ? cupTint : null}
                     top={item.top}
                     bot={item.bot}
                     heightMm={item.height}
@@ -434,10 +437,23 @@ export function BlinkApp() {
               <h2 className="font-display text-2xl">{t.colorsTitle}</h2>
               <p className="mt-1 text-sm text-muted">{t.colorsLead}</p>
               <div className="mt-3 flex flex-wrap gap-2">
+                {(["logo", "cup"] as const).map((id) => (
+                  <button
+                    key={id}
+                    type="button"
+                    aria-pressed={inkTarget === id}
+                    onClick={() => setInkTarget(id)}
+                    className={`min-h-11 rounded-full px-4 text-sm ${inkTarget === id ? "bg-ink text-paper" : "bg-card"}`}
+                  >
+                    {id === "logo" ? t.inkLogo : t.inkCup}
+                  </button>
+                ))}
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
                 <button
                   type="button"
-                  onClick={() => setTint(null)}
-                  className={`min-h-11 rounded-full border px-4 text-sm ${tint === null ? "border-ink" : "border-line bg-card"}`}
+                  onClick={() => (inkTarget === "cup" ? setCupTint(null) : setTint(null))}
+                  className={`min-h-11 rounded-full border px-4 text-sm ${(inkTarget === "cup" ? cupTint : tint) === null ? "border-ink" : "border-line bg-card"}`}
                 >
                   {t.original}
                 </button>
@@ -446,8 +462,8 @@ export function BlinkApp() {
                     key={`file-${hex}`}
                     type="button"
                     aria-label={`${t.fileColor} ${hex}`}
-                    onClick={() => setTint(hex)}
-                    className={`h-11 w-11 rounded-full border ${tint === hex ? "border-ink ring-2 ring-ink" : "border-line"}`}
+                    onClick={() => (inkTarget === "cup" ? setCupTint(hex) : setTint(hex))}
+                    className={`h-11 w-11 rounded-full border ${(inkTarget === "cup" ? cupTint : tint) === hex ? "border-ink ring-2 ring-ink" : "border-line"}`}
                     style={{ background: hex }}
                   />
                 ))}
@@ -455,9 +471,9 @@ export function BlinkApp() {
                   <button
                     key={swatch.name}
                     type="button"
-                    aria-label={swatch.name}
-                    onClick={() => setTint(swatch.hex)}
-                    className={`h-11 w-11 rounded-full border ${tint === swatch.hex ? "border-ink ring-2 ring-ink" : "border-line"}`}
+                    aria-label={swatch.hex}
+                    onClick={() => (inkTarget === "cup" ? setCupTint(swatch.hex) : setTint(swatch.hex))}
+                    className={`h-11 w-11 rounded-full border ${(inkTarget === "cup" ? cupTint : tint) === swatch.hex ? "border-ink ring-2 ring-ink" : "border-line"}`}
                     style={{ background: swatch.hex }}
                   />
                 ))}
@@ -482,6 +498,7 @@ export function BlinkApp() {
                       >
                         <CupView
                           texture={texture ?? null}
+                          body={cupTint}
                           top={cup.top}
                           bot={cup.bot}
                           heightMm={cup.height}
@@ -569,6 +586,7 @@ export function BlinkApp() {
                   spin={spin}
                   mode={renderMode}
                   drink={drink}
+                  body={cupTint}
                   className="h-[28rem] w-full cursor-pointer"
                   onViews={(shots) => {
                     const title = draft.event ? `${cup.name} · ${draft.event}` : cup.name;

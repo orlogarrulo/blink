@@ -6,16 +6,17 @@ type Props = {
   bot: number;
   heightMm: number;
   cover: number;
+  body?: string | null;
   spin: boolean;
   className?: string;
 };
 
-export function CupView({ texture, top, bot, heightMm, cover, spin, className }: Props) {
+export function CupView({ texture, top, bot, heightMm, cover, body = null, spin, className }: Props) {
   const ref = useRef<HTMLCanvasElement>(null);
   const angle = useRef(0);
   const drag = useRef<{ x: number; a: number } | null>(null);
-  const live = useRef({ texture, top, bot, heightMm, cover, spin });
-  live.current = { texture, top, bot, heightMm, cover, spin };
+  const live = useRef({ texture, top, bot, heightMm, cover, body, spin });
+  live.current = { texture, top, bot, heightMm, cover, body, spin };
 
   useEffect(() => {
     const canvas = ref.current;
@@ -75,11 +76,12 @@ export function CupView({ texture, top, bot, heightMm, cover, spin, className }:
       ctx.lineTo(cx - botR, topCy + bodyH);
       ctx.closePath();
       const frost = ctx.createLinearGradient(cx - topR, 0, cx + topR, 0);
-      frost.addColorStop(0, "#eef2f4");
-      frost.addColorStop(0.16, "#ffffff");
-      frost.addColorStop(0.48, "#fbfcfd");
-      frost.addColorStop(0.78, "#f4f7f8");
-      frost.addColorStop(1, "#e3e9ed");
+      const milk = spec.body ? mixWhite(spec.body) : null;
+      frost.addColorStop(0, milk ? milk(0.55) : "#eef2f4");
+      frost.addColorStop(0.16, milk ? milk(0.82) : "#ffffff");
+      frost.addColorStop(0.48, milk ? milk(0.7) : "#fbfcfd");
+      frost.addColorStop(0.78, milk ? milk(0.48) : "#f4f7f8");
+      frost.addColorStop(1, milk ? milk(0.28) : "#e3e9ed");
       ctx.fillStyle = frost;
       ctx.fill();
       ctx.save();
@@ -227,4 +229,16 @@ export function CupView({ texture, top, bot, heightMm, cover, spin, className }:
       }}
     />
   );
+}
+
+function mixWhite(hex: string): (amount: number) => string {
+  const raw = hex.replace("#", "");
+  const value = Number.parseInt(raw.length === 3 ? raw.split("").map((c) => c + c).join("") : raw, 16);
+  const red = (value >> 16) & 255;
+  const green = (value >> 8) & 255;
+  const blue = value & 255;
+  return (amount) => {
+    const mix = (channel: number) => Math.round(channel + (255 - channel) * amount);
+    return `rgb(${mix(red)}, ${mix(green)}, ${mix(blue)})`;
+  };
 }

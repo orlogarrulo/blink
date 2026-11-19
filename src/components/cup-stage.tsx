@@ -12,14 +12,15 @@ type Props = {
   spin: boolean;
   mode?: RenderMode;
   drink?: Drink;
+  body?: string | null;
   className?: string;
   onViews?: (shots: HTMLCanvasElement[]) => void;
 };
 
-export function CupStage({ texture, top, bot, heightMm, cover, spin, mode = "frost", drink = "none", className, onViews }: Props) {
+export function CupStage({ texture, top, bot, heightMm, cover, spin, mode = "frost", drink = "none", body = null, className, onViews }: Props) {
   const ref = useRef<HTMLCanvasElement>(null);
-  const live = useRef({ texture, top, bot, heightMm, cover, spin, mode, drink });
-  live.current = { texture, top, bot, heightMm, cover, spin, mode, drink };
+  const live = useRef({ texture, top, bot, heightMm, cover, spin, mode, drink, body });
+  live.current = { texture, top, bot, heightMm, cover, spin, mode, drink, body };
   const onViewsRef = useRef(onViews);
   onViewsRef.current = onViews;
   const shoot = useRef<(() => HTMLCanvasElement[]) | null>(null);
@@ -134,6 +135,10 @@ export function CupStage({ texture, top, bot, heightMm, cover, spin, mode = "fro
           bodyMat.sheen = 0.35;
           bodyMat.envMapIntensity = 0.9;
           bodyMat.attenuationDistance = height * 0.22;
+        }
+        if (live.current.body) {
+          bodyMat.color.set(live.current.body);
+          bodyMat.attenuationColor.set(live.current.body);
         }
         bodyMat.needsUpdate = true;
       };
@@ -419,9 +424,10 @@ export function CupStage({ texture, top, bot, heightMm, cover, spin, mode = "fro
       };
 
       const loop = () => {
-        if (body.userData.mode !== live.current.mode) {
+        if (body.userData.mode !== live.current.mode || body.userData.body !== (live.current.body || "")) {
           applyMode(live.current.mode);
           body.userData.mode = live.current.mode;
+          body.userData.body = live.current.body || "";
         }
         if (body.userData.drink !== live.current.drink) {
           body.userData.drink = live.current.drink;
