@@ -276,6 +276,67 @@ export function sheetCanvas(options: {
   return canvas;
 }
 
+export function viewsSheet(title: string, labels: readonly string[], shots: HTMLCanvasElement[]): HTMLCanvasElement {
+  const canvas = document.createElement("canvas");
+  canvas.width = 1240;
+  canvas.height = 1754;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return canvas;
+  ctx.fillStyle = "#F6F0E6";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "#1A120C";
+  ctx.font = "650 40px Fraunces, serif";
+  ctx.fillText(title, 48, 72);
+  const gap = 24;
+  const left = 40;
+  const top = 104;
+  const cols = 2;
+  const rows = 3;
+  const cellW = (canvas.width - left * 2 - gap) / cols;
+  const cellH = (canvas.height - top - 36 - gap * (rows - 1)) / rows;
+  shots.slice(0, 6).forEach((shot, index) => {
+    const col = index % cols;
+    const row = Math.floor(index / cols);
+    const x = left + col * (cellW + gap);
+    const y = top + row * (cellH + gap);
+    ctx.fillStyle = "#FFFFFF";
+    roundRect(ctx, x, y, cellW, cellH, 18);
+    ctx.fill();
+    const boxH = cellH - 48;
+    const scale = Math.min((cellW - 16) / shot.width, (boxH - 8) / shot.height);
+    const dw = shot.width * scale;
+    const dh = shot.height * scale;
+    ctx.drawImage(shot, x + (cellW - dw) / 2, y + 8 + (boxH - dh) / 2, dw, dh);
+    ctx.fillStyle = "#1A120C";
+    ctx.font = "500 22px Outfit, sans-serif";
+    ctx.fillText(labels[index] || "", x + 16, y + cellH - 16);
+  });
+  return canvas;
+}
+
+function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+export function openPdf(blob: Blob) {
+  const url = URL.createObjectURL(blob);
+  const opened = window.open(url, "_blank", "noopener");
+  if (!opened) {
+    const link = document.createElement("a");
+    link.href = url;
+    link.target = "_blank";
+    link.rel = "noopener";
+    link.click();
+  }
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
 export function canvasPdf(canvas: HTMLCanvasElement): Blob {
   const quality = 0.85;
   const dataUrl = canvas.toDataURL("image/jpeg", quality);

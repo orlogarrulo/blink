@@ -17,7 +17,7 @@ import {
   type Process,
 } from "@/lib/catalog";
 import { LANGS, detectLang, localeFor, text, type Lang } from "@/lib/copy";
-import { canvasPdf, cmyk, dominantColors, downloadBlob, paintLabel, sheetCanvas, tintCanvas } from "@/lib/print";
+import { canvasPdf, cmyk, dominantColors, downloadBlob, openPdf, paintLabel, sheetCanvas, tintCanvas, viewsSheet } from "@/lib/print";
 import { dialForMarket, detectMarket, KZ_PER_EUR, pricePair, type Market } from "@/lib/money";
 import { DIALS } from "@/lib/phone";
 import { rasterizeSvg, traceCanvas } from "@/lib/trace";
@@ -153,7 +153,6 @@ export function BlinkApp() {
   const late = draft.eventDate ? delivery > new Date(`${draft.eventDate}T23:59:00`) : false;
   const unitPrice = pricePair(priced.tier.kz, market);
   const lotPrice = pricePair(priced.tier.kz * draft.qty, market);
-  const brandMark = useMemo(() => drawBlinkMark(), []);
 
   useEffect(() => {
     if (ready && process !== draft.process) setDraft((current) => ({ ...current, process }));
@@ -375,7 +374,7 @@ export function BlinkApp() {
                   className={`w-full rounded-3xl border bg-card px-2 pb-3 pt-2 text-left ${on ? "border-ink" : "border-line"}`}
                 >
                   <CupView
-                    texture={on && chosen ? chosen : item.id === "ECO40" ? brandMark : null}
+                    texture={on && chosen ? chosen : null}
                     top={item.top}
                     bot={item.bot}
                     heightMm={item.height}
@@ -566,9 +565,14 @@ export function BlinkApp() {
                   heightMm={cup.height}
                   cover={area.h / cup.height}
                   spin={spin}
-                  className="h-[28rem] w-full"
+                  className="h-[28rem] w-full cursor-pointer"
+                  onViews={(shots) => {
+                    const title = draft.event ? `${cup.name} · ${draft.event}` : cup.name;
+                    openPdf(canvasPdf(viewsSheet(title, t.angles, shots)));
+                  }}
                 />
               </div>
+              <p className="border-t border-line px-4 py-2 text-xs text-muted">{t.viewHint}</p>
               <div className="flex items-center justify-between gap-3 border-t border-line px-4 py-3">
                 <p className="text-sm text-muted">
                   {cup.name} · {t.sample[chosenId as SampleId].name} · {t.process[process]}
@@ -628,46 +632,6 @@ function BlinkLogo({ slogan }: { slogan: string }) {
       </div>
     </div>
   );
-}
-
-function drawBlinkMark(): HTMLCanvasElement | null {
-  if (typeof document === "undefined") return null;
-  const canvas = document.createElement("canvas");
-  canvas.width = 900;
-  canvas.height = 520;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return canvas;
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = "#E4572E";
-  ctx.beginPath();
-  ctx.moveTo(280, 40);
-  ctx.lineTo(620, 40);
-  ctx.lineTo(590, 150);
-  ctx.lineTo(310, 150);
-  ctx.closePath();
-  ctx.fill();
-  ctx.fillStyle = "#E6B325";
-  ctx.beginPath();
-  ctx.moveTo(320, 168);
-  ctx.lineTo(580, 168);
-  ctx.lineTo(548, 300);
-  ctx.lineTo(352, 300);
-  ctx.closePath();
-  ctx.fill();
-  ctx.fillStyle = "#D63A3A";
-  ctx.beginPath();
-  ctx.moveTo(365, 318);
-  ctx.lineTo(535, 318);
-  ctx.lineTo(508, 420);
-  ctx.lineTo(392, 420);
-  ctx.closePath();
-  ctx.fill();
-  ctx.fillStyle = "#1A120C";
-  ctx.font = "700 64px Fraunces, serif";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText("BLINK", 450, 470);
-  return canvas;
 }
 
 const control = "min-h-11 w-full rounded-2xl border border-line bg-paper px-3";

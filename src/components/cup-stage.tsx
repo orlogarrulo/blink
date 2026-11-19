@@ -8,14 +8,18 @@ type Props = {
   cover: number;
   spin: boolean;
   className?: string;
+  onViews?: (shots: HTMLCanvasElement[]) => void;
 };
 
-export function CupStage({ texture, top, bot, heightMm, cover, spin, className }: Props) {
+export function CupStage({ texture, top, bot, heightMm, cover, spin, className, onViews }: Props) {
   const ref = useRef<HTMLCanvasElement>(null);
   const live = useRef({ texture, top, bot, heightMm, cover, spin });
   live.current = { texture, top, bot, heightMm, cover, spin };
+  const onViewsRef = useRef(onViews);
+  onViewsRef.current = onViews;
+  const shoot = useRef<(() => HTMLCanvasElement[]) | null>(null);
   const angle = useRef(0);
-  const drag = useRef<{ x: number; a: number } | null>(null);
+  const drag = useRef<{ x: number; y: number; a: number } | null>(null);
 
   useEffect(() => {
     const canvas = ref.current;
@@ -189,6 +193,42 @@ export function CupStage({ texture, top, bot, heightMm, cover, spin, className }
       observer.observe(canvas);
       const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+      shoot.current = () => {
+        const spec = live.current;
+        const radius = spec.top / 2;
+        const tall = spec.heightMm;
+        const saved = group.rotation.y;
+        const ratio = Math.min(2, window.devicePixelRatio || 1);
+        renderer.setPixelRatio(1);
+        renderer.setSize(720, 900, false);
+        camera.aspect = 720 / 900;
+        const dist = (tall * 0.58) / Math.tan((14 * Math.PI) / 180);
+        const views = [
+          { y: 0, x: radius * 0.55, camY: tall * 0.5, z: dist, look: tall * 0.46 },
+          { y: Math.PI * 0.28, x: radius * 0.55, camY: tall * 0.5, z: dist, look: tall * 0.46 },
+          { y: Math.PI * 0.5, x: radius * 0.55, camY: tall * 0.5, z: dist, look: tall * 0.46 },
+          { y: Math.PI, x: radius * 0.55, camY: tall * 0.5, z: dist, look: tall * 0.46 },
+          { y: -Math.PI * 0.28, x: radius * 0.55, camY: tall * 0.5, z: dist, look: tall * 0.46 },
+          { y: Math.PI * 0.12, x: radius * 0.15, camY: tall * 1.35, z: dist * 0.72, look: tall * 0.38 },
+        ];
+        const shots = views.map((view) => {
+          group.rotation.y = view.y;
+          camera.position.set(view.x, view.camY, view.z);
+          camera.lookAt(0, view.look, 0);
+          camera.updateProjectionMatrix();
+          renderer.render(scene, camera);
+          const shot = document.createElement("canvas");
+          shot.width = 720;
+          shot.height = 900;
+          shot.getContext("2d")?.drawImage(renderer.domElement, 0, 0);
+          return shot;
+        });
+        group.rotation.y = saved;
+        renderer.setPixelRatio(ratio);
+        fit();
+        return shots;
+      };
+
       const loop = () => {
         if (live.current.spin && !reduce && !drag.current) angle.current += 0.008;
         group.rotation.y = angle.current;
@@ -220,6 +260,7 @@ export function CupStage({ texture, top, bot, heightMm, cover, spin, className }
 
     return () => {
       stop = true;
+      shoot.current = null;
       dispose();
     };
   }, [texture, top, bot, heightMm, cover]);
@@ -227,18 +268,23 @@ export function CupStage({ texture, top, bot, heightMm, cover, spin, className }
   return (
     <canvas
       ref={ref}
-      className={className ?? "h-[28rem] w-full touch-none"}
-      aria-label="Copo Ecocup em volume. Arrasta para rodar."
+      className={`${className ?? "h-[28rem] w-full"} touch-none cursor-pointer`}
+      aria-label="Copo Ecocup em volume. Arrasta para rodar. Clica para abrir o PDF dos ângulos."
       onPointerDown={(event) => {
-        drag.current = { x: event.clientX, a: angle.current };
+        drag.current = { x: event.clientX, y: event.clientY, a: angle.current };
         event.currentTarget.setPointerCapture(event.pointerId);
       }}
       onPointerMove={(event) => {
         if (!drag.current) return;
         angle.current = drag.current.a + (event.clientX - drag.current.x) * 0.01;
       }}
-      onPointerUp={() => {
+      onPointerUp={(event) => {
+        const start = drag.current;
         drag.current = null;
+        if (!start || !shoot.current || !onViewsRef.current) return;
+        const moved = Math.hypot(event.clientX - start.x, event.clientY - start.y);
+        if (moved > 8) return;
+        onViewsRef.current(shoot.current());
       }}
     />
   );
