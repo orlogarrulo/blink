@@ -1,5 +1,8 @@
 import { useEffect, useRef } from "react";
 
+type RenderMode = "frost" | "clear" | "studio";
+type Drink = "none" | "beer" | "soda";
+
 type Props = {
   texture: HTMLCanvasElement | null;
   top: number;
@@ -7,14 +10,16 @@ type Props = {
   heightMm: number;
   cover: number;
   spin: boolean;
+  mode?: RenderMode;
+  drink?: Drink;
   className?: string;
   onViews?: (shots: HTMLCanvasElement[]) => void;
 };
 
-export function CupStage({ texture, top, bot, heightMm, cover, spin, className, onViews }: Props) {
+export function CupStage({ texture, top, bot, heightMm, cover, spin, mode = "frost", drink = "none", className, onViews }: Props) {
   const ref = useRef<HTMLCanvasElement>(null);
-  const live = useRef({ texture, top, bot, heightMm, cover, spin });
-  live.current = { texture, top, bot, heightMm, cover, spin };
+  const live = useRef({ texture, top, bot, heightMm, cover, spin, mode, drink });
+  live.current = { texture, top, bot, heightMm, cover, spin, mode, drink };
   const onViewsRef = useRef(onViews);
   onViewsRef.current = onViews;
   const shoot = useRef<(() => HTMLCanvasElement[]) | null>(null);
@@ -50,30 +55,89 @@ export function CupStage({ texture, top, bot, heightMm, cover, spin, className, 
       const topR = spec.top / 2;
       const botR = spec.bot / 2;
       const height = spec.heightMm;
-      const pts: InstanceType<typeof THREE.Vector2>[] = [];
+      const wall = Math.max(0.85, Math.min(topR, botR) * 0.055);
       const steps = 48;
-      for (let i = 0; i <= steps; i += 1) {
-        const t = i / steps;
+      const outerR = (t: number) => {
         let r = botR + (topR - botR) * t;
         if (t < 0.05) r *= 0.9 + 0.1 * (t / 0.05);
         if (t > 0.95) r += Math.sin(((t - 0.95) / 0.05) * Math.PI) * topR * 0.045;
-        pts.push(new THREE.Vector2(Math.max(0.4, r), t * height));
+        return Math.max(0.4, r);
+      };
+      const outer: InstanceType<typeof THREE.Vector2>[] = [];
+      for (let i = 0; i <= steps; i += 1) {
+        const t = i / steps;
+        outer.push(new THREE.Vector2(outerR(t), t * height));
       }
-      const geo = new THREE.LatheGeometry(pts, 128);
-      const body = new THREE.Mesh(
-        geo,
-        new THREE.MeshPhysicalMaterial({
-          color: 0xf4f6f7,
-          roughness: 0.32,
-          metalness: 0,
-          clearcoat: 0.62,
-          clearcoatRoughness: 0.24,
-          envMapIntensity: 1,
-        }),
-      );
+      const shell: InstanceType<typeof THREE.Vector2>[] = [];
+      for (let i = 0; i <= steps; i += 1) shell.push(outer[i].clone());
+      shell.push(new THREE.Vector2(outerR(1) - wall * 0.35, height - wall * 0.55));
+      for (let i = steps; i >= 1; i -= 1) {
+        const t = i / steps;
+        const inset = t > 0.93 ? wall * 0.4 : wall;
+        const y = Math.max(wall * 1.7, t * height - wall * 0.15);
+        shell.push(new THREE.Vector2(Math.max(wall, outerR(Math.min(t, 0.99)) - inset), y));
+      }
+      shell.push(new THREE.Vector2(botR * 0.22, wall * 1.7));
+      shell.push(new THREE.Vector2(botR * 0.22, 0.35));
+      const geo = new THREE.LatheGeometry(outer, 128);
+      const shellGeo = new THREE.LatheGeometry(shell, 96);
+      shellGeo.computeVertexNormals();
+      const bodyMat = new THREE.MeshPhysicalMaterial({
+        color: 0xf3f6f7,
+        roughness: 0.38,
+        metalness: 0,
+        transmission: 0.62,
+        thickness: wall * 2.2,
+        ior: 1.49,
+        clearcoat: 0.35,
+        clearcoatRoughness: 0.28,
+        attenuationColor: new THREE.Color(0xf4f7f8),
+        attenuationDistance: height * 0.22,
+        sheen: 0.35,
+        sheenColor: new THREE.Color(0xffffff),
+        sheenRoughness: 0.6,
+        envMapIntensity: 0.9,
+      });
+      const body = new THREE.Mesh(shellGeo, bodyMat);
       body.castShadow = true;
       const group = new THREE.Group();
       group.add(body);
+      const applyMode = (next: RenderMode) => {
+        if (next === "studio") {
+          bodyMat.transmission = 0;
+          bodyMat.thickness = 0;
+          bodyMat.roughness = 0.78;
+          bodyMat.clearcoat = 0.04;
+          bodyMat.color.set(0xf7f4ee);
+          bodyMat.ior = 1.4;
+          bodyMat.sheen = 0.12;
+          bodyMat.envMapIntensity = 0.4;
+        } else if (next === "clear") {
+          bodyMat.transmission = 0.92;
+          bodyMat.thickness = wall * 1.3;
+          bodyMat.roughness = 0.08;
+          bodyMat.clearcoat = 0.85;
+          bodyMat.clearcoatRoughness = 0.12;
+          bodyMat.color.set(0xffffff);
+          bodyMat.ior = 1.5;
+          bodyMat.sheen = 0;
+          bodyMat.envMapIntensity = 1.15;
+          bodyMat.attenuationDistance = height * 0.4;
+        } else {
+          bodyMat.transmission = 0.62;
+          bodyMat.thickness = wall * 2.2;
+          bodyMat.roughness = 0.38;
+          bodyMat.clearcoat = 0.35;
+          bodyMat.clearcoatRoughness = 0.28;
+          bodyMat.color.set(0xf3f6f7);
+          bodyMat.ior = 1.49;
+          bodyMat.sheen = 0.35;
+          bodyMat.envMapIntensity = 0.9;
+          bodyMat.attenuationDistance = height * 0.22;
+        }
+        bodyMat.needsUpdate = true;
+      };
+      applyMode(live.current.mode);
 
       const rim = new THREE.Mesh(
         new THREE.TorusGeometry(topR * 0.985, Math.max(1.15, topR * 0.058), 24, 120),
@@ -118,6 +182,98 @@ export function CupStage({ texture, top, bot, heightMm, cover, spin, className, 
       group.add(decal);
       scene.add(group);
 
+      const bottleH = 230;
+      const bottleR = 30.5;
+      const canR = 33.1;
+      const canH = 115;
+      const sideGap = 18;
+      const levelPts = (level: number) => {
+        const yMax = height * level;
+        const pts = [new THREE.Vector2(0.8, wall * 1.8)];
+        for (let i = 1; i <= steps; i += 1) {
+          const t = i / steps;
+          const y = t * height;
+          if (y >= yMax) break;
+          pts.push(new THREE.Vector2(Math.max(1, outerR(t) - wall - 0.7), y));
+        }
+        const topRad = Math.max(1, outerR(Math.min(0.98, yMax / height)) - wall - 0.7);
+        pts.push(new THREE.Vector2(topRad, yMax));
+        pts.push(new THREE.Vector2(0.5, yMax));
+        return pts;
+      };
+      const beerGeo = new THREE.LatheGeometry(levelPts(0.78), 64);
+      const sodaGeo = new THREE.LatheGeometry(levelPts(0.9), 64);
+      const liquidMat = new THREE.MeshPhysicalMaterial({
+        color: 0xd08920,
+        roughness: 0.14,
+        metalness: 0,
+        transmission: 0.58,
+        thickness: 16,
+        ior: 1.34,
+      });
+      const liquid = new THREE.Mesh(beerGeo, liquidMat);
+      liquid.visible = false;
+      group.add(liquid);
+      const foamR = Math.max(2, outerR(0.78) - wall - 1.1);
+      const foam = new THREE.Mesh(
+        new THREE.CylinderGeometry(foamR, Math.max(2, foamR - 1.5), 5, 48),
+        new THREE.MeshStandardMaterial({ color: 0xf4efe4, roughness: 0.94 }),
+      );
+      foam.position.y = height * 0.78 + 1.6;
+      foam.visible = false;
+      group.add(foam);
+
+      const bottlePts = [
+        [0.6, 0],
+        [16, 1],
+        [bottleR, 10],
+        [bottleR, 150],
+        [22, 172],
+        [13.2, 192],
+        [12.6, 222],
+        [15.2, bottleH],
+      ].map(([x, y]) => new THREE.Vector2(x, y));
+      const bottleGeo = new THREE.LatheGeometry(bottlePts, 48);
+      const bottleMat = new THREE.MeshPhysicalMaterial({
+        color: 0xc9842c,
+        roughness: 0.08,
+        transmission: 0.72,
+        thickness: 2.4,
+        ior: 1.5,
+        clearcoat: 0.35,
+      });
+      const bottle = new THREE.Mesh(bottleGeo, bottleMat);
+      bottle.castShadow = true;
+      const cap = new THREE.Mesh(
+        new THREE.CylinderGeometry(15.4, 15.4, 7, 24),
+        new THREE.MeshStandardMaterial({ color: 0xb08a3e, metalness: 0.62, roughness: 0.34 }),
+      );
+      cap.position.y = bottleH + 3.5;
+      const bottleGroup = new THREE.Group();
+      bottleGroup.add(bottle, cap);
+      bottleGroup.position.x = -(topR + sideGap + bottleR);
+      bottleGroup.visible = false;
+      scene.add(bottleGroup);
+
+      const canBodyMat = new THREE.MeshStandardMaterial({ color: 0x7a1c18, metalness: 0.52, roughness: 0.38 });
+      const canMetal = new THREE.MeshStandardMaterial({ color: 0xd5d8dc, metalness: 0.86, roughness: 0.22 });
+      const canStripe = new THREE.MeshStandardMaterial({ color: 0xc4553a, metalness: 0.35, roughness: 0.42 });
+      const canBody = new THREE.Mesh(new THREE.CylinderGeometry(canR, canR, 96, 40), canBodyMat);
+      canBody.position.y = 54;
+      const canBand = new THREE.Mesh(new THREE.CylinderGeometry(canR + 0.2, canR + 0.2, 26, 40), canStripe);
+      canBand.position.y = 60;
+      const canTop = new THREE.Mesh(new THREE.CylinderGeometry(canR - 0.8, canR, 12, 40), canMetal);
+      canTop.position.y = 107;
+      const canLid = new THREE.Mesh(new THREE.CylinderGeometry(22, 22, 1.3, 28), canMetal);
+      canLid.position.y = canH - 0.5;
+      const canFoot = new THREE.Mesh(new THREE.CylinderGeometry(canR - 0.5, canR, 6, 40), canMetal);
+      canFoot.position.y = 3;
+      const canGroup = new THREE.Group();
+      canGroup.add(canBody, canBand, canTop, canLid, canFoot);
+      canGroup.position.x = topR + sideGap + canR;
+      canGroup.visible = false;
+      scene.add(canGroup);
+
       let map: InstanceType<typeof THREE.CanvasTexture> | null = null;
       const paintWrap = () => {
         map?.dispose();
@@ -152,7 +308,7 @@ export function CupStage({ texture, top, bot, heightMm, cover, spin, className, 
       paintWrap();
 
       const ground = new THREE.Mesh(
-        new THREE.CircleGeometry(Math.max(topR, botR) * 1.7, 48),
+        new THREE.CircleGeometry(topR + sideGap + bottleR + canR + 70, 48),
         new THREE.ShadowMaterial({ opacity: 0.2 }),
       );
       ground.rotation.x = -Math.PI / 2;
@@ -164,7 +320,7 @@ export function CupStage({ texture, top, bot, heightMm, cover, spin, className, 
       key.position.set(-topR * 1.4, height * 1.7, topR * 2.6);
       key.castShadow = true;
       key.shadow.mapSize.set(1024, 1024);
-      const span = height * 1.3;
+      const span = Math.max(height * 1.3, 280);
       key.shadow.camera.near = 1;
       key.shadow.camera.far = height * 5;
       key.shadow.camera.left = -span;
@@ -172,7 +328,11 @@ export function CupStage({ texture, top, bot, heightMm, cover, spin, className, 
       key.shadow.camera.top = span;
       key.shadow.camera.bottom = -span;
       scene.add(key);
-      scene.add(new THREE.AmbientLight(0xf7f8fa, 0.72));
+      scene.add(new THREE.AmbientLight(0xf7f8fa, 0.55));
+      scene.add(new THREE.HemisphereLight(0xffffff, 0xe4d5c4, 0.45));
+      const rimLight = new THREE.DirectionalLight(0xffffff, 1.15);
+      rimLight.position.set(-topR * 0.2, height * 0.9, -topR * 3);
+      scene.add(rimLight);
       const fill = new THREE.DirectionalLight(0xd7e3ee, 0.5);
       fill.position.set(topR * 2.2, height * 0.25, -topR);
       scene.add(fill);
@@ -183,9 +343,21 @@ export function CupStage({ texture, top, bot, heightMm, cover, spin, className, 
         if (w < 2 || h < 2) return;
         renderer.setSize(w, h, false);
         camera.aspect = w / h;
-        const dist = (height * 0.58) / Math.tan((14 * Math.PI) / 180);
-        camera.position.set(topR * 0.55, height * 0.5, dist);
-        camera.lookAt(0, height * 0.46, 0);
+        const vFov = (28 * Math.PI) / 180;
+        if (live.current.drink === "none") {
+          const dist = (height * 0.58) / Math.tan(vFov / 2);
+          camera.position.set(topR * 0.55, height * 0.5, dist);
+          camera.lookAt(0, height * 0.46, 0);
+        } else {
+          const halfW = Math.max(topR + sideGap + bottleR * 2, topR + sideGap + canR * 2);
+          const tall = bottleH;
+          const distH = (tall * 0.62) / Math.tan(vFov / 2);
+          const hFov = 2 * Math.atan(Math.tan(vFov / 2) * camera.aspect);
+          const distW = (halfW * 1.08) / Math.tan(hFov / 2);
+          const dist = Math.max(distH, distW);
+          camera.position.set(0, tall * 0.46, dist);
+          camera.lookAt(0, tall * 0.4, 0);
+        }
         camera.updateProjectionMatrix();
       };
       fit();
@@ -194,28 +366,23 @@ export function CupStage({ texture, top, bot, heightMm, cover, spin, className, 
       const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
       shoot.current = () => {
-        const spec = live.current;
-        const radius = spec.top / 2;
-        const tall = spec.heightMm;
         const saved = group.rotation.y;
         const ratio = Math.min(2, window.devicePixelRatio || 1);
         renderer.setPixelRatio(1);
-        renderer.setSize(720, 900, false);
-        camera.aspect = 720 / 900;
-        const dist = (tall * 0.58) / Math.tan((14 * Math.PI) / 180);
-        const views = [
-          { y: 0, x: radius * 0.55, camY: tall * 0.5, z: dist, look: tall * 0.46 },
-          { y: Math.PI * 0.28, x: radius * 0.55, camY: tall * 0.5, z: dist, look: tall * 0.46 },
-          { y: Math.PI * 0.5, x: radius * 0.55, camY: tall * 0.5, z: dist, look: tall * 0.46 },
-          { y: Math.PI, x: radius * 0.55, camY: tall * 0.5, z: dist, look: tall * 0.46 },
-          { y: -Math.PI * 0.28, x: radius * 0.55, camY: tall * 0.5, z: dist, look: tall * 0.46 },
-          { y: Math.PI * 0.12, x: radius * 0.15, camY: tall * 1.35, z: dist * 0.72, look: tall * 0.38 },
-        ];
-        const shots = views.map((view) => {
-          group.rotation.y = view.y;
-          camera.position.set(view.x, view.camY, view.z);
-          camera.lookAt(0, view.look, 0);
-          camera.updateProjectionMatrix();
+        const angles = [0, Math.PI * 0.28, Math.PI * 0.5, Math.PI, -Math.PI * 0.28, Math.PI * 0.12];
+        const shots = angles.map((turn, index) => {
+          group.rotation.y = turn;
+          renderer.setSize(720, 900, false);
+          camera.aspect = 720 / 900;
+          fit();
+          if (index === 5 && live.current.drink === "none") {
+            const tall = live.current.heightMm;
+            const radius = live.current.top / 2;
+            const dist = (tall * 0.58) / Math.tan((14 * Math.PI) / 180);
+            camera.position.set(radius * 0.15, tall * 1.35, dist * 0.72);
+            camera.lookAt(0, tall * 0.38, 0);
+            camera.updateProjectionMatrix();
+          }
           renderer.render(scene, camera);
           const shot = document.createElement("canvas");
           shot.width = 720;
@@ -229,7 +396,37 @@ export function CupStage({ texture, top, bot, heightMm, cover, spin, className, 
         return shots;
       };
 
+      const placeDrink = () => {
+        const next = live.current.drink;
+        const on = next !== "none";
+        liquid.visible = on;
+        foam.visible = next === "beer";
+        bottleGroup.visible = on;
+        canGroup.visible = on;
+        if (next === "soda") {
+          liquid.geometry = sodaGeo;
+          liquidMat.color.set(0x3a120e);
+          liquidMat.transmission = 0.38;
+          liquidMat.roughness = 0.05;
+        } else {
+          liquid.geometry = beerGeo;
+          liquidMat.color.set(0xd08920);
+          liquidMat.transmission = 0.58;
+          liquidMat.roughness = 0.14;
+        }
+        liquidMat.needsUpdate = true;
+        fit();
+      };
+
       const loop = () => {
+        if (body.userData.mode !== live.current.mode) {
+          applyMode(live.current.mode);
+          body.userData.mode = live.current.mode;
+        }
+        if (body.userData.drink !== live.current.drink) {
+          body.userData.drink = live.current.drink;
+          placeDrink();
+        }
         if (live.current.spin && !reduce && !drag.current) angle.current += 0.008;
         group.rotation.y = angle.current;
         renderer.render(scene, camera);
@@ -241,7 +438,25 @@ export function CupStage({ texture, top, bot, heightMm, cover, spin, className, 
         cancelAnimationFrame(frame);
         observer.disconnect();
         geo.dispose();
-        body.material.dispose();
+        shellGeo.dispose();
+        bodyMat.dispose();
+        beerGeo.dispose();
+        sodaGeo.dispose();
+        liquidMat.dispose();
+        foam.geometry.dispose();
+        (foam.material as { dispose: () => void }).dispose();
+        bottleGeo.dispose();
+        bottleMat.dispose();
+        cap.geometry.dispose();
+        (cap.material as { dispose: () => void }).dispose();
+        canBody.geometry.dispose();
+        canBand.geometry.dispose();
+        canTop.geometry.dispose();
+        canLid.geometry.dispose();
+        canFoot.geometry.dispose();
+        canBodyMat.dispose();
+        canMetal.dispose();
+        canStripe.dispose();
         (rim.material as { dispose: () => void }).dispose();
         rim.geometry.dispose();
         (mouth.material as { dispose: () => void }).dispose();

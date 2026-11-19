@@ -114,6 +114,8 @@ export function BlinkApp() {
   const [artName, setArtName] = useState("");
   const [error, setError] = useState("");
   const [spin, setSpin] = useState(true);
+  const [renderMode, setRenderMode] = useState<"frost" | "clear" | "studio">("frost");
+  const [drink, setDrink] = useState<"none" | "beer" | "soda">("none");
   const [vectorLabel, setVectorLabel] = useState<HTMLCanvasElement | null>(null);
   const [tracing, setTracing] = useState(false);
   const [tint, setTint] = useState<string | null>(null);
@@ -565,6 +567,8 @@ export function BlinkApp() {
                   heightMm={cup.height}
                   cover={area.h / cup.height}
                   spin={spin}
+                  mode={renderMode}
+                  drink={drink}
                   className="h-[28rem] w-full cursor-pointer"
                   onViews={(shots) => {
                     const title = draft.event ? `${cup.name} · ${draft.event}` : cup.name;
@@ -573,6 +577,34 @@ export function BlinkApp() {
                 />
               </div>
               <p className="border-t border-line px-4 py-2 text-xs text-muted">{t.viewHint}</p>
+              <div className="flex flex-wrap items-center gap-2 border-t border-line px-4 py-3">
+                {(["frost", "clear", "studio"] as const).map((id) => (
+                  <button
+                    key={id}
+                    type="button"
+                    aria-pressed={renderMode === id}
+                    onClick={() => setRenderMode(id)}
+                    className={`min-h-11 rounded-full px-4 text-sm ${renderMode === id ? "bg-ink text-paper" : "bg-card"}`}
+                  >
+                    {t.render[id]}
+                  </button>
+                ))}
+              </div>
+              <p className="px-4 pb-3 text-xs text-muted">{t.renderNote[renderMode]}</p>
+              <div className="flex flex-wrap items-center gap-2 border-t border-line px-4 py-3">
+                {(["none", "beer", "soda"] as const).map((id) => (
+                  <button
+                    key={id}
+                    type="button"
+                    aria-pressed={drink === id}
+                    onClick={() => setDrink(id)}
+                    className={`min-h-11 rounded-full px-4 text-sm ${drink === id ? "bg-ink text-paper" : "bg-card"}`}
+                  >
+                    {t.drink[id]}
+                  </button>
+                ))}
+              </div>
+              <p className="px-4 pb-3 text-xs text-muted">{t.drinkNote}</p>
               <div className="flex items-center justify-between gap-3 border-t border-line px-4 py-3">
                 <p className="text-sm text-muted">
                   {cup.name} · {t.sample[chosenId as SampleId].name} · {t.process[process]}
