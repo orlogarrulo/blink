@@ -16,6 +16,7 @@ import {
   type Area,
   type Process,
 } from "@/lib/catalog";
+import { LANGS, detectLang, localeFor, text, type Lang } from "@/lib/copy";
 import { canvasPdf, cmyk, dominantColors, downloadBlob, paintLabel, sheetCanvas, tintCanvas } from "@/lib/print";
 import { dialForMarket, detectMarket, KZ_PER_EUR, pricePair, type Market } from "@/lib/money";
 import { DIALS } from "@/lib/phone";
@@ -117,11 +118,15 @@ export function BlinkApp() {
   const [tracing, setTracing] = useState(false);
   const [tint, setTint] = useState<string | null>(null);
   const [market, setMarket] = useState<Market>("KZ");
+  const [lang, setLang] = useState<Lang>("pt");
+  const t = text(lang);
+  const locale = localeFor(lang);
 
   useEffect(() => {
     const saved = loadDraft();
     const next = detectMarket();
     setMarket(next);
+    setLang(detectLang());
     if (!saved.phone && saved.dial === "+244") saved.dial = dialForMarket(next);
     setDraft(saved);
     setReady(true);
@@ -132,13 +137,19 @@ export function BlinkApp() {
     localStorage.setItem("blink-draft", JSON.stringify(draft));
   }, [draft, ready]);
 
+  useEffect(() => {
+    localStorage.setItem("blink-lang", lang);
+    document.documentElement.lang = lang;
+    document.title = t.title;
+  }, [lang, t.title]);
+
   const cup = cupById(draft.cupId);
   const allowed = processesFor(cup);
   const process = allowed.includes(draft.process) ? draft.process : allowed[0];
   const area = areaFor(cup, process);
   const priced = priceFor(cup, draft.qty);
   const delivery = deliveryDate(draft.qty, process);
-  const deliveryLabel = new Intl.DateTimeFormat("pt-PT", { dateStyle: "long" }).format(delivery);
+  const deliveryLabel = new Intl.DateTimeFormat(locale, { dateStyle: "long" }).format(delivery);
   const late = draft.eventDate ? delivery > new Date(`${draft.eventDate}T23:59:00`) : false;
   const unitPrice = pricePair(priced.tier.kz, market);
   const lotPrice = pricePair(priced.tier.kz * draft.qty, market);
@@ -254,7 +265,7 @@ export function BlinkApp() {
       setTint(null);
       patch({ sample: null });
     } catch {
-      setError("Esse ficheiro não abriu. Usa PDF, PNG, JPG ou SVG.");
+      setError(t.fileError);
     }
   }
 
@@ -332,15 +343,26 @@ export function BlinkApp() {
   return (
     <main className="mx-auto min-h-dvh max-w-6xl px-4 pb-16 pt-5 sm:px-6">
       <header className="flex flex-wrap items-end justify-between gap-4">
-        <BlinkLogo />
-        <p className="max-w-sm text-sm leading-relaxed text-muted">
-          Os copos entram lisos. O desenho do cliente aplica-se ao centro, em sete amostras. O modelo 3D e a ficha só nascem depois da escolha.
-        </p>
+        <BlinkLogo slogan={t.slogan} />
+        <div className="flex items-center gap-1" role="group" aria-label={t.language}>
+          {LANGS.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              aria-pressed={lang === item.id}
+              onClick={() => setLang(item.id)}
+              className={`min-h-11 min-w-11 rounded-full px-3 text-sm ${lang === item.id ? "bg-ink text-paper" : "bg-card text-ink"}`}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+        <p className="max-w-sm text-sm leading-relaxed text-muted">{t.intro}</p>
       </header>
 
       <section className="mt-6">
-        <h2 className="font-display text-2xl">Copos lisos</h2>
-        <p className="mt-1 text-sm text-muted">Corpo Ecocup em polipropileno, sem impressão. Escolhe o modelo.</p>
+        <h2 className="font-display text-2xl">{t.plainTitle}</h2>
+        <p className="mt-1 text-sm text-muted">{t.plainLead}</p>
         <ul className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-5">
           {CUPS.map((item) => {
             const on = item.id === cup.id;
@@ -376,8 +398,8 @@ export function BlinkApp() {
       <section className="mt-8 grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
         <div className="space-y-4">
           <label className="flex min-h-24 cursor-pointer flex-col items-center justify-center rounded-3xl border border-dashed border-line bg-card px-4 text-center">
-            <span className="font-medium">Submeter o desenho</span>
-            <span className="mt-1 text-sm text-muted">{artName || "PDF, PNG ou JPG. A primeira página entra ao centro."}</span>
+            <span className="font-medium">{t.upload}</span>
+            <span className="mt-1 text-sm text-muted">{artName || t.uploadHint}</span>
             <input
               className="sr-only"
               type="file"
@@ -394,35 +416,35 @@ export function BlinkApp() {
                 onClick={() => patch({ process: item })}
                 className={`min-h-11 rounded-full px-4 text-sm ${process === item ? "bg-ink text-paper" : "bg-card"}`}
               >
-                {PROCESS_LABEL[item]}
+                {t.process[item]}
               </button>
             ))}
           </div>
           {area ? (
             <p className="text-sm text-muted">
               {cup.name}
-              {cup.measured ? ` · ${cup.height} × boca ${cup.top} × base ${cup.bot} mm` : " · corpo ainda sem ficha pública"}
-              {` · janela ${area.w} × ${area.h} mm`}
+              {cup.measured ? ` · ${cup.height} × ${t.mouth} ${cup.top} × ${t.base} ${cup.bot} mm` : ` · ${t.unmeasured}`}
+              {` · ${t.window} ${area.w} × ${area.h} mm`}
             </p>
           ) : null}
 
           {art && baseLabels ? (
             <div>
-              <h2 className="font-display text-2xl">Cores sugeridas</h2>
-              <p className="mt-1 text-sm text-muted">Carrega numa tinta. Entra logo no desenho do copo.</p>
+              <h2 className="font-display text-2xl">{t.colorsTitle}</h2>
+              <p className="mt-1 text-sm text-muted">{t.colorsLead}</p>
               <div className="mt-3 flex flex-wrap gap-2">
                 <button
                   type="button"
                   onClick={() => setTint(null)}
                   className={`min-h-11 rounded-full border px-4 text-sm ${tint === null ? "border-ink" : "border-line bg-card"}`}
                 >
-                  Original
+                  {t.original}
                 </button>
                 {fileColors.map((hex) => (
                   <button
                     key={`file-${hex}`}
                     type="button"
-                    aria-label={`Cor do ficheiro ${hex}`}
+                    aria-label={`${t.fileColor} ${hex}`}
                     onClick={() => setTint(hex)}
                     className={`h-11 w-11 rounded-full border ${tint === hex ? "border-ink ring-2 ring-ink" : "border-line"}`}
                     style={{ background: hex }}
@@ -444,8 +466,8 @@ export function BlinkApp() {
 
           {art && labels ? (
             <div>
-              <h2 className="font-display text-2xl">Sete amostras</h2>
-              <p className="mt-1 text-sm text-muted">Todas ao centro, à volta do copo. Escolhe uma para gerar o modelo.</p>
+              <h2 className="font-display text-2xl">{t.samplesTitle}</h2>
+              <p className="mt-1 text-sm text-muted">{t.samplesLead}</p>
               <ul className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-7">
                 {SAMPLES.map((sample) => {
                   const texture = sample.id === "vetor" ? vectorShown : labels[sample.id];
@@ -466,8 +488,8 @@ export function BlinkApp() {
                           spin={false}
                           className="h-32 w-full"
                         />
-                        <span className="mt-1 block px-1 text-sm font-medium">{sample.name}</span>
-                        <span className="block px-1 text-xs text-muted">{sample.id === "vetor" && tracing ? "A traçar…" : sample.note}</span>
+                        <span className="mt-1 block px-1 text-sm font-medium">{t.sample[sample.id].name}</span>
+                        <span className="block px-1 text-xs text-muted">{sample.id === "vetor" && tracing ? t.tracing : t.sample[sample.id].note}</span>
                       </button>
                     </li>
                   );
@@ -475,26 +497,26 @@ export function BlinkApp() {
               </ul>
             </div>
           ) : (
-            <p className="text-sm text-muted">Quando o ficheiro entrar, aparecem as sete formas de o pôr no copo.</p>
+            <p className="text-sm text-muted">{t.waiting}</p>
           )}
         </div>
 
         <aside className="rounded-3xl border border-line bg-card p-4">
-          <h2 className="font-display text-2xl">Ficha</h2>
+          <h2 className="font-display text-2xl">{t.sheet}</h2>
           <div className="mt-3 space-y-3">
-            <Field label="Evento">
-              <input className={control} value={draft.event} onChange={(event) => patch({ event: event.target.value })} placeholder="Nome do projecto" />
+            <Field label={t.event}>
+              <input className={control} value={draft.event} onChange={(event) => patch({ event: event.target.value })} placeholder={t.projectName} />
             </Field>
-            <Field label="Promotor">
+            <Field label={t.promoter}>
               <input className={control} value={draft.promoter} onChange={(event) => patch({ promoter: event.target.value })} />
             </Field>
             <Field label="Email">
               <input className={control} type="email" autoComplete="email" inputMode="email" value={draft.email} onChange={(event) => patch({ email: event.target.value })} placeholder="cliente@estudio.ao" />
             </Field>
-            <Field label="Telefone">
+            <Field label={t.phone}>
               <span className="flex min-h-11 overflow-hidden rounded-2xl border border-line bg-paper">
                 <select
-                  aria-label="Indicativo"
+                  aria-label={t.dial}
                   className="w-[5.5rem] shrink-0 border-r border-line bg-paper px-2 text-sm"
                   value={draft.dial}
                   onChange={(event) => patch({ dial: event.target.value })}
@@ -516,18 +538,18 @@ export function BlinkApp() {
               </span>
             </Field>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Quantidade">
+              <Field label={t.qty}>
                 <input className={control} type="number" min={1} value={draft.qty} onChange={(event) => patch({ qty: Number(event.target.value) || 0 })} />
               </Field>
-              <Field label="Data do evento">
+              <Field label={t.eventDate}>
                 <input className={control} type="date" value={draft.eventDate} onChange={(event) => patch({ eventDate: event.target.value })} />
               </Field>
             </div>
             <p className="text-sm text-muted">
-              {unitPrice.primary} / un neste escalão · {unitPrice.secondary}. Entrega estimada {deliveryLabel}. Frete {freightMode(draft.qty)}, {freightDays(draft.qty)} dias depois de {productionDays(process)} dias úteis.
+              {unitPrice.primary} {t.perTier} · {unitPrice.secondary}. {t.estimated} {deliveryLabel}. {t.freight} {freightMode(draft.qty) === "marítimo" ? t.sea : t.air}, {freightDays(draft.qty)} {t.after} {productionDays(process)} {t.working}.
             </p>
-            {late ? <p className="border-l-4 border-pitanga pl-3 text-sm">A entrega estimada cai depois da data do evento.</p> : null}
-            {priced.below ? <p className="text-sm text-muted">Quantidade abaixo do primeiro escalão da tabela.</p> : null}
+            {late ? <p className="border-l-4 border-pitanga pl-3 text-sm">{t.late}</p> : null}
+            {priced.below ? <p className="text-sm text-muted">{t.belowMin}</p> : null}
           </div>
         </aside>
       </section>
@@ -549,25 +571,25 @@ export function BlinkApp() {
               </div>
               <div className="flex items-center justify-between gap-3 border-t border-line px-4 py-3">
                 <p className="text-sm text-muted">
-                  {cup.name} · {sampleById(chosenId as SampleId).name} · {PROCESS_LABEL[process]}
+                  {cup.name} · {t.sample[chosenId as SampleId].name} · {t.process[process]}
                 </p>
                 <button type="button" className="min-h-11 px-3 text-sm" onClick={() => setSpin((value) => !value)}>
-                  {spin ? "Parar" : "Rodar"}
+                  {spin ? t.stop : t.spin}
                 </button>
               </div>
-              <WindowPlate area={area} process={process} canvas={chosen} />
+              <WindowPlate area={area} process={process} canvas={chosen} caption={t} />
             </div>
             <div className="space-y-4 border-t border-line p-4 lg:border-l lg:border-t-0">
-              <h2 className="font-display text-3xl leading-tight">{draft.event || "Sem nome"}</h2>
+              <h2 className="font-display text-3xl leading-tight">{draft.event || t.unnamed}</h2>
               <p className="text-sm text-muted">
-                {draft.promoter || "Promotor"}
+                {draft.promoter || t.promoter}
                 {draft.email ? ` · ${draft.email}` : ""}
                 {draft.phone ? ` · ${draft.dial} ${draft.phone}` : ""}
-                {` · ${cup.name} · ${PROCESS_LABEL[process]} · ${draft.qty.toLocaleString("pt-PT")} copos`}
+                {` · ${cup.name} · ${t.process[process]} · ${draft.qty.toLocaleString(locale)} ${t.cups}`}
               </p>
               <p className="text-sm">
-                {unitPrice.primary} / un · {lotPrice.primary} no lote
-                <span className="text-muted"> · {unitPrice.secondary} / un</span>
+                {unitPrice.primary} {t.perUnit} · {lotPrice.primary} {t.inLot}
+                <span className="text-muted"> · {unitPrice.secondary} {t.perUnit}</span>
               </p>
               <ul className="flex flex-wrap gap-3">
                 {colors.map((hex) => (
@@ -579,9 +601,9 @@ export function BlinkApp() {
                 ))}
               </ul>
               <button type="button" onClick={() => void exportSheet()} className="min-h-11 w-full rounded-full bg-ink text-sm font-medium text-paper">
-                Descarregar PDF, etiqueta{chosenId === "vetor" ? " e SVG" : ""}
+                {t.download}{chosenId === "vetor" ? ` ${t.andSvg}` : ""}
               </button>
-              <p className="text-xs leading-relaxed text-muted">O prazo é estimativa de estúdio. O euro usa o câmbio indicativo de {KZ_PER_EUR} Kz.</p>
+              <p className="text-xs leading-relaxed text-muted">{t.estimate} {KZ_PER_EUR} Kz.</p>
             </div>
           </div>
         </section>
@@ -590,7 +612,7 @@ export function BlinkApp() {
   );
 }
 
-function BlinkLogo() {
+function BlinkLogo({ slogan }: { slogan: string }) {
   return (
     <div className="flex items-center gap-3">
       <svg viewBox="0 0 48 48" className="h-12 w-12" aria-hidden>
@@ -602,7 +624,7 @@ function BlinkLogo() {
       </svg>
       <div>
         <p className="font-display text-4xl leading-none tracking-tight">BLINK</p>
-        <p className="mt-1 text-sm text-muted">Estúdio 3D para copos reutilizáveis.</p>
+        <p className="mt-1 text-sm text-muted">{slogan}</p>
       </div>
     </div>
   );
@@ -659,7 +681,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-function WindowPlate({ area, process, canvas }: { area: Area; process: Process; canvas: HTMLCanvasElement }) {
+function WindowPlate({ area, process, canvas, caption }: { area: Area; process: Process; canvas: HTMLCanvasElement; caption: ReturnType<typeof text> }) {
   const safety = process === "iml" ? 3 : 2;
   const [src, setSrc] = useState("");
   useEffect(() => {
@@ -674,7 +696,7 @@ function WindowPlate({ area, process, canvas }: { area: Area; process: Process; 
   const insetY = (safety / area.h) * innerH;
   return (
     <figure className="border-t border-line px-4 py-4">
-      <svg viewBox={`0 0 ${width} ${height}`} className="w-full" role="img" aria-label="Janela de impressão desenrolada">
+      <svg viewBox={`0 0 ${width} ${height}`} className="w-full" role="img" aria-label={caption.plate}>
         <rect x={pad} y={pad} width={inner} height={innerH} fill="var(--color-paper)" />
         {src ? <image href={src} x={pad} y={pad} width={inner} height={innerH} preserveAspectRatio="xMidYMid meet" /> : null}
         <rect x={pad} y={pad} width={inner} height={innerH} fill="none" stroke="var(--color-ink)" strokeWidth="1.5" />
@@ -687,8 +709,8 @@ function WindowPlate({ area, process, canvas }: { area: Area; process: Process; 
         </text>
       </svg>
       <figcaption className="mt-2 text-xs leading-relaxed text-muted">
-        Corte da etiqueta, centrado. Tracejado: {safety} mm de segurança.
-        {process === "iml" ? " No IML há ainda 2 mm acima e abaixo e 4 mm extra no topo, fora desta janela." : ""}
+        {caption.cut} {safety} {caption.safety}
+        {process === "iml" ? ` ${caption.imlNote}` : ""}
       </figcaption>
     </figure>
   );
