@@ -1,0 +1,13 @@
+node_modules
+.grok
+.vercel
+.tanstack
+screenshots
+artifacts
+attachments
+dist
+*.mp4
+hero*
+spin*
+cmp
+details
