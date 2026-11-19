@@ -1,6 +1,6 @@
 # BLINK
 
-Estúdio para aplicar um desenho a copos reutilizáveis Ecocup e gerar a ficha de impressão.
+Estúdio 3D para copos reutilizáveis. Aplica um desenho ao copo e gera a ficha de impressão.
 
 ```bash
 npm install

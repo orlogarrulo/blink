@@ -8,7 +8,7 @@ export const Route = createRootRoute({
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "BLINK" },
+      { title: "BLINK — estúdio 3D para copos reutilizáveis" },
       { name: "description", content: "Estúdio de copos reutilizáveis. Escolhe o modelo, aplica o desenho e gera a ficha para a gráfica." },
       { name: "theme-color", content: "#F6F0E6" },
     ],

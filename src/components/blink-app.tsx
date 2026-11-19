@@ -602,6 +602,7 @@ function BlinkLogo() {
       </svg>
       <div>
         <p className="font-display text-4xl leading-none tracking-tight">BLINK</p>
+        <p className="mt-1 text-sm text-muted">Estúdio 3D para copos reutilizáveis.</p>
       </div>
     </div>
   );
