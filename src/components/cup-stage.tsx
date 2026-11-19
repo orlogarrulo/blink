@@ -190,11 +190,6 @@ export function CupStage({ texture, top, bot, heightMm, cover, spin, mode = "fro
       group.add(decal);
       scene.add(group);
 
-      const bottleH = 230;
-      const bottleR = 30.5;
-      const canR = 33.1;
-      const canH = 115;
-      const sideGap = 18;
       const levelPts = (level: number) => {
         const yMax = height * level;
         const pts = [new THREE.Vector2(0.8, wall * 1.8)];
@@ -231,57 +226,6 @@ export function CupStage({ texture, top, bot, heightMm, cover, spin, mode = "fro
       foam.visible = false;
       group.add(foam);
 
-      const bottlePts = [
-        [0.6, 0],
-        [16, 1],
-        [bottleR, 10],
-        [bottleR, 150],
-        [22, 172],
-        [13.2, 192],
-        [12.6, 222],
-        [15.2, bottleH],
-      ].map(([x, y]) => new THREE.Vector2(x, y));
-      const bottleGeo = new THREE.LatheGeometry(bottlePts, 48);
-      const bottleMat = new THREE.MeshPhysicalMaterial({
-        color: 0xc9842c,
-        roughness: 0.08,
-        transmission: 0.72,
-        thickness: 2.4,
-        ior: 1.5,
-        clearcoat: 0.35,
-      });
-      const bottle = new THREE.Mesh(bottleGeo, bottleMat);
-      bottle.castShadow = true;
-      const cap = new THREE.Mesh(
-        new THREE.CylinderGeometry(15.4, 15.4, 7, 24),
-        new THREE.MeshStandardMaterial({ color: 0xb08a3e, metalness: 0.62, roughness: 0.34 }),
-      );
-      cap.position.y = bottleH + 3.5;
-      const bottleGroup = new THREE.Group();
-      bottleGroup.add(bottle, cap);
-      bottleGroup.position.x = -(topR + sideGap + bottleR);
-      bottleGroup.visible = false;
-      scene.add(bottleGroup);
-
-      const canBodyMat = new THREE.MeshStandardMaterial({ color: 0x7a1c18, metalness: 0.52, roughness: 0.38 });
-      const canMetal = new THREE.MeshStandardMaterial({ color: 0xd5d8dc, metalness: 0.86, roughness: 0.22 });
-      const canStripe = new THREE.MeshStandardMaterial({ color: 0xc4553a, metalness: 0.35, roughness: 0.42 });
-      const canBody = new THREE.Mesh(new THREE.CylinderGeometry(canR, canR, 96, 40), canBodyMat);
-      canBody.position.y = 54;
-      const canBand = new THREE.Mesh(new THREE.CylinderGeometry(canR + 0.2, canR + 0.2, 26, 40), canStripe);
-      canBand.position.y = 60;
-      const canTop = new THREE.Mesh(new THREE.CylinderGeometry(canR - 0.8, canR, 12, 40), canMetal);
-      canTop.position.y = 107;
-      const canLid = new THREE.Mesh(new THREE.CylinderGeometry(22, 22, 1.3, 28), canMetal);
-      canLid.position.y = canH - 0.5;
-      const canFoot = new THREE.Mesh(new THREE.CylinderGeometry(canR - 0.5, canR, 6, 40), canMetal);
-      canFoot.position.y = 3;
-      const canGroup = new THREE.Group();
-      canGroup.add(canBody, canBand, canTop, canLid, canFoot);
-      canGroup.position.x = topR + sideGap + canR;
-      canGroup.visible = false;
-      scene.add(canGroup);
-
       let map: InstanceType<typeof THREE.CanvasTexture> | null = null;
       const paintWrap = () => {
         map?.dispose();
@@ -316,7 +260,7 @@ export function CupStage({ texture, top, bot, heightMm, cover, spin, mode = "fro
       paintWrap();
 
       const ground = new THREE.Mesh(
-        new THREE.CircleGeometry(topR + sideGap + bottleR + canR + 70, 48),
+        new THREE.CircleGeometry(Math.max(topR, botR) * 1.8, 48),
         new THREE.ShadowMaterial({ opacity: 0.2 }),
       );
       ground.rotation.x = -Math.PI / 2;
@@ -352,20 +296,9 @@ export function CupStage({ texture, top, bot, heightMm, cover, spin, mode = "fro
         renderer.setSize(w, h, false);
         camera.aspect = w / h;
         const vFov = (28 * Math.PI) / 180;
-        if (live.current.drink === "none") {
-          const dist = (height * 0.58) / Math.tan(vFov / 2);
-          camera.position.set(topR * 0.55, height * 0.5, dist);
-          camera.lookAt(0, height * 0.46, 0);
-        } else {
-          const halfW = Math.max(topR + sideGap + bottleR * 2, topR + sideGap + canR * 2);
-          const tall = bottleH;
-          const distH = (tall * 0.62) / Math.tan(vFov / 2);
-          const hFov = 2 * Math.atan(Math.tan(vFov / 2) * camera.aspect);
-          const distW = (halfW * 1.08) / Math.tan(hFov / 2);
-          const dist = Math.max(distH, distW);
-          camera.position.set(0, tall * 0.46, dist);
-          camera.lookAt(0, tall * 0.4, 0);
-        }
+        const dist = (height * 0.58) / Math.tan(vFov / 2);
+        camera.position.set(topR * 0.55, height * 0.5, dist);
+        camera.lookAt(0, height * 0.46, 0);
         camera.updateProjectionMatrix();
       };
       fit();
@@ -436,8 +369,13 @@ export function CupStage({ texture, top, bot, heightMm, cover, spin, mode = "fro
         const on = next !== "none";
         liquid.visible = on;
         foam.visible = next === "beer";
-        bottleGroup.visible = on;
-        canGroup.visible = on;
+        applyMode(live.current.mode);
+        if (on && live.current.mode !== "studio") {
+          bodyMat.transmission = 0.82;
+          bodyMat.roughness = 0.18;
+          bodyMat.thickness = wall * 1.6;
+          bodyMat.needsUpdate = true;
+        }
         if (next === "soda") {
           liquid.geometry = sodaGeo;
           liquidMat.color.set(0x3a120e);
@@ -481,18 +419,6 @@ export function CupStage({ texture, top, bot, heightMm, cover, spin, mode = "fro
         liquidMat.dispose();
         foam.geometry.dispose();
         (foam.material as { dispose: () => void }).dispose();
-        bottleGeo.dispose();
-        bottleMat.dispose();
-        cap.geometry.dispose();
-        (cap.material as { dispose: () => void }).dispose();
-        canBody.geometry.dispose();
-        canBand.geometry.dispose();
-        canTop.geometry.dispose();
-        canLid.geometry.dispose();
-        canFoot.geometry.dispose();
-        canBodyMat.dispose();
-        canMetal.dispose();
-        canStripe.dispose();
         (rim.material as { dispose: () => void }).dispose();
         rim.geometry.dispose();
         (mouth.material as { dispose: () => void }).dispose();

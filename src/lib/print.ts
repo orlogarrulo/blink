@@ -210,6 +210,8 @@ export function sheetCanvas(options: {
   delivery: string;
   eventDate: string;
   priceLine: string;
+  freightNote?: string;
+  extraRows?: [string, string][];
 }): HTMLCanvasElement {
   const canvas = document.createElement("canvas");
   canvas.width = 1240;
@@ -266,10 +268,11 @@ export function sheetCanvas(options: {
     ["Quantidade", `${options.qty} copos${below ? "  ·  abaixo do mínimo da tabela" : ""}`],
     ["Preço de tabela", options.priceLine],
     ["Produção estimada", `${productionDays(options.process)} dias úteis`],
-    ["Frete", `${freightMode(options.qty)}  ·  +${freightDays(options.qty)} dias`],
+    ["Frete", options.freightNote || `${freightMode(options.qty)}  ·  +${freightDays(options.qty)} dias`],
     ["Entrega estimada", options.delivery],
     ["Data do evento", options.eventDate || "—"],
   ];
+  (options.extraRows || []).forEach((row) => rows.push(row));
   rows.forEach((row, index) => {
     const top = 860 + index * 52;
     ctx.fillStyle = "#fffaf3";
