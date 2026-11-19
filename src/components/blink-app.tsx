@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { CupView } from "@/components/cup-view";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { CupView, cupStills } from "@/components/cup-view";
 import { CupStage } from "@/components/cup-stage";
 import {
   CUPS,
@@ -17,7 +17,7 @@ import {
   type Process,
 } from "@/lib/catalog";
 import { LANGS, detectLang, localeFor, text, type Lang } from "@/lib/copy";
-import { canvasPdf, cmyk, dominantColors, downloadBlob, openPdf, paintLabel, sheetCanvas, tintCanvas, viewsSheet } from "@/lib/print";
+import { angleSheet, canvasPdf, cmyk, dominantColors, downloadBlob, openPdf, paintLabel, sheetCanvas, tintCanvas, viewsSheet } from "@/lib/print";
 import { dialForMarket, detectMarket, KZ_PER_EUR, pricePair, type Market } from "@/lib/money";
 import { DIALS } from "@/lib/phone";
 import { rasterizeSvg, traceCanvas } from "@/lib/trace";
@@ -36,6 +36,8 @@ type Draft = {
   cupId: string;
   process: Process;
   sample: SampleId | null;
+  phrase: string;
+  font: FontId;
 };
 
 const SAMPLES: { id: SampleId; name: string; note: string; fit: Fit; scale: number; flat: boolean }[] = [
@@ -48,6 +50,18 @@ const SAMPLES: { id: SampleId; name: string; note: string; fit: Fit; scale: numb
   { id: "vetor", name: "Vetor", note: "Curvas traçadas da arte", fit: "contain", scale: 1, flat: false },
 ];
 
+const FONTS = [
+  { id: "outfit", label: "Outfit", css: "Outfit, sans-serif" },
+  { id: "fraunces", label: "Fraunces", css: "Fraunces, serif" },
+  { id: "bebas", label: "Bebas", css: '"Bebas Neue", sans-serif' },
+  { id: "caveat", label: "Caveat", css: "Caveat, cursive" },
+] as const;
+type FontId = (typeof FONTS)[number]["id"];
+
+function fontCss(id: string) {
+  return FONTS.find((item) => item.id === id)?.css ?? FONTS[0].css;
+}
+
 const EMPTY: Draft = {
   event: "",
   promoter: "",
@@ -59,6 +73,8 @@ const EMPTY: Draft = {
   cupId: "ECO40",
   process: "iml",
   sample: null,
+  phrase: "",
+  font: "outfit",
 };
 
 function loadDraft(): Draft {
@@ -68,7 +84,9 @@ function loadDraft(): Draft {
     const parsed = JSON.parse(raw) as Partial<Draft>;
     const sample = SAMPLES.some((item) => item.id === parsed.sample) ? (parsed.sample as SampleId) : null;
     const dial = typeof parsed.dial === "string" && DIALS.includes(parsed.dial) ? parsed.dial : EMPTY.dial;
-    return { ...EMPTY, ...parsed, sample, dial };
+    const font = FONTS.some((item) => item.id === parsed.font) ? (parsed.font as FontId) : EMPTY.font;
+    const phrase = typeof parsed.phrase === "string" ? parsed.phrase.slice(0, 60) : "";
+    return { ...EMPTY, ...parsed, sample, dial, font, phrase };
   } catch {
     return EMPTY;
   }
@@ -123,6 +141,7 @@ export function BlinkApp() {
   const [inkTarget, setInkTarget] = useState<"logo" | "cup">("logo");
   const [market, setMarket] = useState<Market>("KZ");
   const [lang, setLang] = useState<Lang>("pt");
+  const shotsRef = useRef<((turns: number[]) => HTMLCanvasElement[]) | null>(null);
   const t = text(lang);
   const locale = localeFor(lang);
 
@@ -163,7 +182,9 @@ export function BlinkApp() {
   }, [ready, process, draft.process]);
 
   const baseLabels = useMemo(() => {
-    if (!area || !art || typeof document === "undefined") return null;
+    const phrase = draft.phrase.trim();
+    if (!area || (!art && !phrase) || typeof document === "undefined") return null;
+    const family = fontCss(draft.font);
     const ppm = Math.min(12, Math.max(8, Math.round(1800 / area.w)));
     const probe = paintLabel({
       area,
@@ -171,7 +192,8 @@ export function BlinkApp() {
       image: art,
       scale: 1,
       shift: 0,
-      title: "",
+      title: phrase,
+      font: family,
       ink: "#1A120C",
       process,
       suggest: false,
@@ -190,7 +212,8 @@ export function BlinkApp() {
         image: art,
         scale: sample.scale,
         shift: 0,
-        title: "",
+        title: phrase,
+        font: family,
         ink: palette[0],
         process,
         suggest: sample.flat,
@@ -200,7 +223,7 @@ export function BlinkApp() {
       });
     }
     return map;
-  }, [area, art, process]);
+  }, [area, art, process, draft.phrase, draft.font]);
 
   const fileColors = useMemo(() => (baseLabels ? dominantColors(baseLabels.medida, 4) : []), [baseLabels]);
 
@@ -290,7 +313,8 @@ export function BlinkApp() {
       image: art,
       scale: 1,
       shift: 0,
-      title: "",
+      title: draft.phrase.trim(),
+      font: fontCss(draft.font),
       ink: "#1A120C",
       process,
       suggest: false,
@@ -305,7 +329,8 @@ export function BlinkApp() {
       image: art,
       scale: sample.scale,
       shift: 0,
-      title: "",
+      title: draft.phrase.trim(),
+      font: fontCss(draft.font),
       ink: palette[0] || "#1A120C",
       process,
       suggest: sample.flat,
@@ -337,7 +362,24 @@ export function BlinkApp() {
       eventDate: draft.eventDate,
       priceLine: `${unitPrice.primary} (${unitPrice.secondary}) / un  ·  ${lotPrice.primary} (${lotPrice.secondary})`,
     });
-    downloadBlob(canvasPdf(sheet), `${slug}-ficha.pdf`);
+    const turns = [0, Math.PI * 0.28, Math.PI * 0.5];
+    const flat = cupStills(
+      {
+        texture: chosen,
+        top: cup.top,
+        bot: cup.bot,
+        heightMm: cup.height,
+        cover: area.h / cup.height,
+        body: cupTint,
+      },
+      turns,
+    );
+    const solid = shotsRef.current?.(turns) ?? [];
+    const views = angleSheet([
+      { name: "2D", labels: t.angles.slice(0, 3), shots: flat },
+      { name: "3D", labels: t.angles.slice(0, 3), shots: solid },
+    ]);
+    downloadBlob(canvasPdf([sheet, views]), `${slug}-ficha.pdf`);
     printLabel.toBlob((blob) => {
       if (blob) downloadBlob(blob, `${slug}-etiqueta.png`);
     }, "image/png");
@@ -412,6 +454,32 @@ export function BlinkApp() {
             />
           </label>
           {error ? <p className="border-l-4 border-pitanga pl-3 text-sm">{error}</p> : null}
+          <div>
+            <label className="block text-sm">
+              <span className="text-muted">{t.phraseTitle}</span>
+              <input
+                className={`${control} mt-1`}
+                maxLength={60}
+                value={draft.phrase}
+                placeholder={t.phraseHint}
+                onChange={(event) => patch({ phrase: event.target.value })}
+              />
+            </label>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {FONTS.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  aria-pressed={draft.font === item.id}
+                  onClick={() => patch({ font: item.id })}
+                  className={`min-h-11 rounded-full px-4 text-sm ${draft.font === item.id ? "bg-ink text-paper" : "bg-card"}`}
+                  style={{ fontFamily: item.css }}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="flex flex-wrap gap-2">
             {processesFor(cup).map((item) => (
               <button
@@ -432,7 +500,7 @@ export function BlinkApp() {
             </p>
           ) : null}
 
-          {art && baseLabels ? (
+          {(art || draft.phrase.trim()) && baseLabels ? (
             <div>
               <h2 className="font-display text-2xl">{t.colorsTitle}</h2>
               <p className="mt-1 text-sm text-muted">{t.colorsLead}</p>
@@ -481,7 +549,7 @@ export function BlinkApp() {
             </div>
           ) : null}
 
-          {art && labels ? (
+          {(art || draft.phrase.trim()) && labels ? (
             <div>
               <h2 className="font-display text-2xl">{t.samplesTitle}</h2>
               <p className="mt-1 text-sm text-muted">{t.samplesLead}</p>
@@ -587,6 +655,7 @@ export function BlinkApp() {
                   mode={renderMode}
                   drink={drink}
                   body={cupTint}
+                  shotsRef={shotsRef}
                   className="h-[28rem] w-full cursor-pointer"
                   onViews={(shots) => {
                     const title = draft.event ? `${cup.name} · ${draft.event}` : cup.name;
@@ -623,6 +692,10 @@ export function BlinkApp() {
                 ))}
               </div>
               <p className="px-4 pb-3 text-xs text-muted">{t.drinkNote}</p>
+              <div className="grid gap-3 px-4 pb-4 sm:grid-cols-2">
+                <img src="/compare-drinks.jpg" alt={t.drinkCompare} className="w-full rounded-2xl" />
+                <img src="/compare-scale.jpg" alt={t.drinkScale} className="w-full rounded-2xl" />
+              </div>
               <div className="flex items-center justify-between gap-3 border-t border-line px-4 py-3">
                 <p className="text-sm text-muted">
                   {cup.name} · {t.sample[chosenId as SampleId].name} · {t.process[process]}

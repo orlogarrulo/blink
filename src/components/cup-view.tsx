@@ -41,6 +41,64 @@ export function CupView({ texture, top, bot, heightMm, cover, body = null, spin,
       ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
       ctx.clearRect(0, 0, width, height);
 
+      drawCup(ctx, width, height, spec, angle.current);
+
+      if (spec.spin && !reduce && !drag.current) angle.current += 0.007;
+    };
+
+    const draw = () => paint();
+    if (!spin) {
+      draw();
+      const observer = new ResizeObserver(() => draw());
+      observer.observe(canvas);
+      return () => observer.disconnect();
+    }
+    const loop = () => {
+      draw();
+      frame = requestAnimationFrame(loop);
+    };
+    frame = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(frame);
+  }, [texture, top, bot, heightMm, cover, spin]);
+
+  return (
+    <canvas
+      ref={ref}
+      className={className ?? "h-80 w-full touch-none lg:h-[32rem]"}
+      aria-label="Copo Ecocup. Arrasta para rodar."
+      onPointerDown={(event) => {
+        if (!spin) return;
+        drag.current = { x: event.clientX, a: angle.current };
+        event.currentTarget.setPointerCapture(event.pointerId);
+      }}
+      onPointerMove={(event) => {
+        if (!drag.current) return;
+        angle.current = drag.current.a + (event.clientX - drag.current.x) * 0.012;
+      }}
+      onPointerUp={() => {
+        drag.current = null;
+      }}
+    />
+  );
+}
+
+
+type CupDraw = {
+  texture: HTMLCanvasElement | null;
+  top: number;
+  bot: number;
+  heightMm: number;
+  cover: number;
+  body?: string | null;
+};
+
+function drawCup(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  spec: CupDraw,
+  turn: number,
+) {
       const aspect = spec.heightMm / Math.max(1, spec.top);
       const maxH = height * 0.9;
       const maxW = width * 0.58;
@@ -127,7 +185,7 @@ export function CupView({ texture, top, bot, heightMm, cover, body = null, spin,
           ctx.imageSmoothingEnabled = true;
           ctx.imageSmoothingQuality = "high";
           const du = 1 / (2 * strips);
-          let u0 = (angle.current + a0) / (Math.PI * 2) + 0.5;
+          let u0 = (turn + a0) / (Math.PI * 2) + 0.5;
           u0 = ((u0 % 1) + 1) % 1;
           const sw = Math.max(1, du * spec.texture.width);
           let sx = u0 * spec.texture.width;
@@ -192,45 +250,21 @@ export function CupView({ texture, top, bot, heightMm, cover, body = null, spin,
       ctx.lineWidth = Math.max(1.3, topR * 0.016);
       ctx.stroke();
 
-      if (spec.spin && !reduce && !drag.current) angle.current += 0.007;
-    };
-
-    const draw = () => paint();
-    if (!spin) {
-      draw();
-      const observer = new ResizeObserver(() => draw());
-      observer.observe(canvas);
-      return () => observer.disconnect();
-    }
-    const loop = () => {
-      draw();
-      frame = requestAnimationFrame(loop);
-    };
-    frame = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(frame);
-  }, [texture, top, bot, heightMm, cover, spin]);
-
-  return (
-    <canvas
-      ref={ref}
-      className={className ?? "h-80 w-full touch-none lg:h-[32rem]"}
-      aria-label="Copo Ecocup. Arrasta para rodar."
-      onPointerDown={(event) => {
-        if (!spin) return;
-        drag.current = { x: event.clientX, a: angle.current };
-        event.currentTarget.setPointerCapture(event.pointerId);
-      }}
-      onPointerMove={(event) => {
-        if (!drag.current) return;
-        angle.current = drag.current.a + (event.clientX - drag.current.x) * 0.012;
-      }}
-      onPointerUp={() => {
-        drag.current = null;
-      }}
-    />
-  );
 }
 
+export function cupStills(spec: CupDraw, angles: number[]): HTMLCanvasElement[] {
+  return angles.map((turn) => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 640;
+    canvas.height = 820;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return canvas;
+    ctx.fillStyle = "#F6F0E6";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    drawCup(ctx, canvas.width, canvas.height, spec, turn);
+    return canvas;
+  });
+}
 function mixWhite(hex: string): (amount: number) => string {
   const raw = hex.replace("#", "");
   const value = Number.parseInt(raw.length === 3 ? raw.split("").map((c) => c + c).join("") : raw, 16);

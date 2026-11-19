@@ -14,15 +14,18 @@ type Props = {
   drink?: Drink;
   body?: string | null;
   className?: string;
+  shotsRef?: { current: ((turns: number[]) => HTMLCanvasElement[]) | null };
   onViews?: (shots: HTMLCanvasElement[]) => void;
 };
 
-export function CupStage({ texture, top, bot, heightMm, cover, spin, mode = "frost", drink = "none", body = null, className, onViews }: Props) {
+export function CupStage({ texture, top, bot, heightMm, cover, spin, mode = "frost", drink = "none", body = null, className, shotsRef, onViews }: Props) {
   const ref = useRef<HTMLCanvasElement>(null);
   const live = useRef({ texture, top, bot, heightMm, cover, spin, mode, drink, body });
   live.current = { texture, top, bot, heightMm, cover, spin, mode, drink, body };
   const onViewsRef = useRef(onViews);
   onViewsRef.current = onViews;
+  const shotsHolder = useRef(shotsRef);
+  shotsHolder.current = shotsRef;
   const shoot = useRef<(() => HTMLCanvasElement[]) | null>(null);
   const angle = useRef(0);
   const drag = useRef<{ x: number; y: number; a: number } | null>(null);
@@ -401,6 +404,33 @@ export function CupStage({ texture, top, bot, heightMm, cover, spin, mode = "fro
         return shots;
       };
 
+      const captureTight = (turns: number[]) => {
+        const saved = group.rotation.y;
+        const ratio = Math.min(2, window.devicePixelRatio || 1);
+        renderer.setPixelRatio(1);
+        const frames = turns.map((turn) => {
+          group.rotation.y = turn;
+          renderer.setSize(640, 820, false);
+          camera.aspect = 640 / 820;
+          const vFov = (28 * Math.PI) / 180;
+          const dist = (height * 0.62) / Math.tan(vFov / 2);
+          camera.position.set(topR * 0.28, height * 0.48, dist);
+          camera.lookAt(0, height * 0.46, 0);
+          camera.updateProjectionMatrix();
+          renderer.render(scene, camera);
+          const shot = document.createElement("canvas");
+          shot.width = 640;
+          shot.height = 820;
+          shot.getContext("2d")?.drawImage(renderer.domElement, 0, 0);
+          return shot;
+        });
+        group.rotation.y = saved;
+        renderer.setPixelRatio(ratio);
+        fit();
+        return frames;
+      };
+      if (shotsHolder.current) shotsHolder.current.current = captureTight;
+
       const placeDrink = () => {
         const next = live.current.drink;
         const on = next !== "none";
@@ -482,6 +512,7 @@ export function CupStage({ texture, top, bot, heightMm, cover, spin, mode = "fro
     return () => {
       stop = true;
       shoot.current = null;
+      if (shotsHolder.current) shotsHolder.current.current = null;
       dispose();
     };
   }, [texture, top, bot, heightMm, cover]);

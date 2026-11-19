@@ -54,6 +54,7 @@ export function paintLabel(options: {
   scale: number;
   shift: number;
   title: string;
+  font?: string;
   ink: string;
   process: Process;
   suggest: boolean;
@@ -88,18 +89,47 @@ export function paintLabel(options: {
     ctx.drawImage(source, (canvas.width - dw) / 2, (canvas.height - dh) / 2 + options.shift, dw, dh);
   }
   if (options.title.trim()) {
-    ctx.fillStyle = options.ink;
-    const size = Math.max(14, canvas.height * 0.16);
-    ctx.font = `600 ${size}px Outfit, sans-serif`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText(options.title.trim(), canvas.width / 2, canvas.height * 0.78);
+    drawPhrase(ctx, options.title.trim(), options.font || "Outfit, sans-serif", options.ink, !options.image);
   }
   if (options.suggest) {
     const inks = options.process === "serigrafia" ? options.palette.slice(0, options.inkCount) : options.palette.slice(0, 4);
     quantize(canvas, inks);
   }
   return canvas;
+}
+
+function drawPhrase(ctx: CanvasRenderingContext2D, text: string, font: string, ink: string, alone: boolean) {
+  const canvas = ctx.canvas;
+  const maxW = canvas.width * 0.88;
+  let size = Math.round(canvas.height * (alone ? 0.22 : 0.16));
+  ctx.fillStyle = ink;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  const linesFor = (px: number) => {
+    ctx.font = `600 ${px}px ${font}`;
+    const words = text.split(/\s+/);
+    const lines: string[] = [];
+    let line = "";
+    for (const word of words) {
+      const next = line ? `${line} ${word}` : word;
+      if (ctx.measureText(next).width > maxW && line) {
+        lines.push(line);
+        line = word;
+      } else {
+        line = next;
+      }
+    }
+    if (line) lines.push(line);
+    return lines;
+  };
+  let lines = linesFor(size);
+  while (size > 18 && (lines.length > 3 || lines.some((line) => ctx.measureText(line).width > maxW))) {
+    size -= 2;
+    lines = linesFor(size);
+  }
+  const gap = size * 1.05;
+  const y0 = (alone ? canvas.height * 0.5 : canvas.height * 0.8) - ((lines.length - 1) * gap) / 2;
+  lines.forEach((line, index) => ctx.fillText(line, canvas.width / 2, y0 + index * gap));
 }
 
 export function dominantColors(source: HTMLCanvasElement, count: number): string[] {
@@ -276,6 +306,44 @@ export function sheetCanvas(options: {
   return canvas;
 }
 
+export function angleSheet(rows: { name: string; labels: readonly string[]; shots: HTMLCanvasElement[] }[]): HTMLCanvasElement {
+  const canvas = document.createElement("canvas");
+  canvas.width = 1240;
+  canvas.height = 1754;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return canvas;
+  ctx.fillStyle = "#F6F0E6";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "#1A120C";
+  ctx.font = "600 42px Fraunces, serif";
+  ctx.fillText("Vistas do copo", 56, 78);
+  rows.slice(0, 2).forEach((row, rowIndex) => {
+    const top = 120 + rowIndex * 800;
+    ctx.fillStyle = "#1A120C";
+    ctx.font = "600 28px Outfit, sans-serif";
+    ctx.fillText(row.name, 56, top + 28);
+    const gap = 24;
+    const cellW = (1240 - 112 - gap * 2) / 3;
+    const cellH = 700;
+    row.shots.slice(0, 3).forEach((shot, index) => {
+      const x = 56 + index * (cellW + gap);
+      const y = top + 48;
+      ctx.fillStyle = "#FFFFFF";
+      roundRect(ctx, x, y, cellW, cellH, 16);
+      ctx.fill();
+      const boxH = cellH - 48;
+      const scale = Math.min((cellW - 16) / shot.width, (boxH - 8) / shot.height);
+      const dw = shot.width * scale;
+      const dh = shot.height * scale;
+      ctx.drawImage(shot, x + (cellW - dw) / 2, y + 8 + (boxH - dh) / 2, dw, dh);
+      ctx.fillStyle = "#1A120C";
+      ctx.font = "500 20px Outfit, sans-serif";
+      ctx.fillText(row.labels[index] || "", x + 16, y + cellH - 16);
+    });
+  });
+  return canvas;
+}
+
 export function viewsSheet(title: string, labels: readonly string[], shots: HTMLCanvasElement[]): HTMLCanvasElement {
   const canvas = document.createElement("canvas");
   canvas.width = 1240;
@@ -337,43 +405,43 @@ export function openPdf(blob: Blob) {
   window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
-export function canvasPdf(canvas: HTMLCanvasElement): Blob {
-  const quality = 0.85;
-  const dataUrl = canvas.toDataURL("image/jpeg", quality);
-  const raw = atob(dataUrl.split(",")[1] || "");
-  const bytes = new Uint8Array(raw.length);
-  for (let i = 0; i < raw.length; i += 1) bytes[i] = raw.charCodeAt(i);
+export function canvasPdf(input: HTMLCanvasElement | HTMLCanvasElement[]): Blob {
+  const pages = Array.isArray(input) ? input : [input];
+  const quality = 0.82;
   const pageW = 595.28;
   const pageH = 841.89;
-  const imgW = pageW - 36;
-  const imgH = (canvas.height / canvas.width) * imgW;
-  const y = 18 + Math.max(0, (pageH - 36 - imgH) / 2);
-  const content = [
-    "q",
-    `${imgW.toFixed(2)} 0 0 ${Math.min(imgH, pageH - 36).toFixed(2)} 18 ${y.toFixed(2)} cm`,
-    "/Im0 Do",
-    "Q",
-  ].join("\n");
   const encoder = new TextEncoder();
   const objects: Uint8Array[] = [];
   const push = (body: string | Uint8Array) => {
     objects.push(typeof body === "string" ? encoder.encode(body) : body);
   };
+  const kids = pages.map((_, index) => `${3 + index * 3} 0 R`).join(" ");
   push("<< /Type /Catalog /Pages 2 0 R >>");
-  push("<< /Type /Pages /Count 1 /Kids [3 0 R] >>");
-  push(
-    `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageW} ${pageH}] /Contents 4 0 R /Resources << /XObject << /Im0 5 0 R >> >> >>`,
-  );
-  push(`<< /Length ${encoder.encode(content).length} >>\nstream\n${content}\nendstream`);
-  const imageHead = encoder.encode(
-    `<< /Type /XObject /Subtype /Image /Width ${canvas.width} /Height ${canvas.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${bytes.length} >>\nstream\n`,
-  );
-  const imageTail = encoder.encode("\nendstream");
-  const image = new Uint8Array(imageHead.length + bytes.length + imageTail.length);
-  image.set(imageHead, 0);
-  image.set(bytes, imageHead.length);
-  image.set(imageTail, imageHead.length + bytes.length);
-  objects.push(image);
+  push(`<< /Type /Pages /Count ${pages.length} /Kids [${kids}] >>`);
+  for (const canvas of pages) {
+    const dataUrl = canvas.toDataURL("image/jpeg", quality);
+    const raw = atob(dataUrl.split(",")[1] || "");
+    const bytes = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i += 1) bytes[i] = raw.charCodeAt(i);
+    const imgW = pageW - 36;
+    const imgH = (canvas.height / canvas.width) * imgW;
+    const y = 18 + Math.max(0, (pageH - 36 - imgH) / 2);
+    const content = ["q", `${imgW.toFixed(2)} 0 0 ${Math.min(imgH, pageH - 36).toFixed(2)} 18 ${y.toFixed(2)} cm`, "/Im0 Do", "Q"].join("\n");
+    const pageNum = objects.length + 1;
+    push(
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageW} ${pageH}] /Contents ${pageNum + 1} 0 R /Resources << /XObject << /Im0 ${pageNum + 2} 0 R >> >> >>`,
+    );
+    push(`<< /Length ${encoder.encode(content).length} >>\nstream\n${content}\nendstream`);
+    const imageHead = encoder.encode(
+      `<< /Type /XObject /Subtype /Image /Width ${canvas.width} /Height ${canvas.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${bytes.length} >>\nstream\n`,
+    );
+    const imageTail = encoder.encode("\nendstream");
+    const image = new Uint8Array(imageHead.length + bytes.length + imageTail.length);
+    image.set(imageHead, 0);
+    image.set(bytes, imageHead.length);
+    image.set(imageTail, imageHead.length + bytes.length);
+    objects.push(image);
+  }
 
   const chunks: Uint8Array[] = [encoder.encode("%PDF-1.4\n")];
   const offsets: number[] = [0];
