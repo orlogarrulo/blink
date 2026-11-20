@@ -212,7 +212,7 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
         const bottleX = leftR + gap + 34;
         const canX = bottleX + 34 + gap + 33;
         const sodaX = canX + 33 + gap + rightR;
-        return { bottleX, canX, sodaX, span: sodaX + rightR };
+        return { bottleX, canX, sodaX, span: sodaX + rightR + leftR };
       };
       const place = () => {
         const row = metrics();
@@ -281,11 +281,12 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
         camera.fov = onlyCup ? 18 : 22;
         const height = live.current.heightMm;
         const targetY = onlyCup ? height * 0.48 : BOTTLE_H * 0.42;
-        const span = onlyCup ? Math.max(height * 1.25, live.current.top * 1.4) : Math.max(BOTTLE_H * 1.15, metrics().span * 0.55);
         const fov = (camera.fov * Math.PI) / 180;
-        const dist = span / (2 * Math.tan(fov / 2));
-        const wide = onlyCup ? dist : Math.max(dist, metrics().span / (2 * Math.tan(fov / 2)) / Math.max(0.35, camera.aspect));
-        camera.position.set(0, targetY + span * 0.02, wide);
+        const tan = Math.tan(fov / 2);
+        const distH = ((onlyCup ? height * 0.7 : BOTTLE_H * 0.72) / tan);
+        const distW = (onlyCup ? Math.max(height * 0.7, live.current.top) : metrics().span / 2) / (tan * Math.max(0.35, camera.aspect));
+        const wide = Math.max(distH, distW) * 1.12;
+        camera.position.set(0, targetY, wide);
         camera.lookAt(0, targetY, 0);
         camera.updateProjectionMatrix();
       };

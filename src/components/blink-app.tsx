@@ -479,8 +479,8 @@ export function BlinkApp() {
   }
 
   return (
-    <main className="mx-auto min-h-dvh max-w-6xl px-4 pb-16 pt-5 sm:px-6">
-      <header className="flex flex-wrap items-end justify-between gap-4">
+    <main className="mx-auto min-h-dvh w-full max-w-6xl overflow-x-hidden px-4 pb-[max(4rem,env(safe-area-inset-bottom))] pt-[max(1.25rem,env(safe-area-inset-top))] sm:px-6">
+      <header className="flex w-full flex-wrap items-end justify-between gap-3">
         <BlinkLogo slogan={t.slogan} />
         <div className="flex items-center gap-1" role="group" aria-label={t.language}>
           {LANGS.map((item) => (
@@ -495,7 +495,7 @@ export function BlinkApp() {
             </button>
           ))}
         </div>
-        <p className="max-w-sm text-sm leading-relaxed text-muted">{t.intro}</p>
+        <p className="w-full max-w-xl text-sm leading-relaxed text-muted">{t.intro}</p>
       </header>
 
       <section className="mt-6">
@@ -719,7 +719,7 @@ export function BlinkApp() {
           {chosen && area ? (
             <section className="overflow-hidden rounded-3xl border border-line bg-card">
             <div>
-              <div className="h-[32rem] bg-white">
+              <div className="h-80 bg-white sm:h-[32rem]">
                 <Lineup
                   texture={chosen}
                   top={cup.top}
@@ -899,25 +899,25 @@ export function BlinkApp() {
                 />
               </span>
             </Field>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid min-w-0 grid-cols-2 gap-3">
               <Field label={t.qty}>
                 <input className={control} type="number" min={1} value={draft.qty} onChange={(event) => patch({ qty: Number(event.target.value) || 0 })} />
               </Field>
               <Field label={t.eventDate}>
-                <input className={control} type="date" value={draft.eventDate} onChange={(event) => patch({ eventDate: event.target.value })} />
+                <input className={`${control} min-w-0`} type="date" value={draft.eventDate} onChange={(event) => patch({ eventDate: event.target.value })} />
               </Field>
             </div>
             <dl className="divide-y divide-line overflow-hidden rounded-2xl border border-line text-sm">
               <div className="flex items-baseline justify-between gap-4 bg-paper px-3 py-3">
                 <dt className="text-muted">{t.final}</dt>
-                <dd className="text-right">
+                <dd className="min-w-0 text-right break-words">
                   <span key={finalUnit.primary} className="final-figure font-display text-2xl leading-none">{finalUnit.primary}</span>
                   <span className="mt-1 block text-muted">{finalLot.primary} {t.inLot}</span>
                 </dd>
               </div>
               <div className="flex items-baseline justify-between gap-4 px-3 py-2.5">
                 <dt className="text-muted">{t.price}</dt>
-                <dd className="text-right">
+                <dd className="min-w-0 text-right break-words">
                   {unitPrice.primary}
                   <span className="mt-0.5 block text-muted">{unitPrice.secondary}</span>
                 </dd>
@@ -941,7 +941,7 @@ export function BlinkApp() {
               {air ? (
                 <div className="flex items-baseline justify-between gap-4 px-3 py-2.5">
                   <dt className="text-muted">{t.fees}</dt>
-                  <dd className="text-right">{airMoney}</dd>
+                  <dd className="min-w-0 text-right break-words">{airMoney}</dd>
                 </div>
               ) : null}
             </dl>
@@ -973,7 +973,54 @@ export function BlinkApp() {
             {t.confirm}
           </button>
         </div>
-        <div className="overflow-x-auto">
+        <ul className="divide-y divide-line md:hidden">
+          {cup.prices.map((tier) => {
+            const landed = airFreight(tier.qty, cupWeightScale(cup));
+            const door = landed?.kz ?? 0;
+            const lot = tier.kz * tier.qty + door;
+            const on = tier.qty === billed;
+            return (
+              <li key={tier.qty}>
+                <button type="button" onClick={() => patch({ qty: tier.qty })} className={`w-full px-4 py-3 text-left ${on ? "bg-paper" : ""}`}>
+                  <span className="block text-sm font-medium">{tier.qty.toLocaleString(locale)}</span>
+                  <span className="mt-1 grid grid-cols-2 gap-x-3 gap-y-1 text-sm">
+                    <span className="text-muted">{cup.name}</span>
+                    <span className="text-right"><SheetMoney kz={tier.kz} /></span>
+                    <span className="text-muted">{t.freight}</span>
+                    <span className="text-right"><SheetMoney kz={door} /></span>
+                    <span className="text-muted">{t.final}</span>
+                    <span className="text-right"><SheetMoney kz={lot / tier.qty} /></span>
+                    <span className="text-muted">{t.inLot}</span>
+                    <span className="text-right"><SheetMoney kz={lot} /></span>
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+          <li className="bg-paper px-4 py-3">
+            <span className="mb-1 block text-xs text-muted">{t.yourQty}</span>
+            <input
+              className="min-h-11 w-full rounded-xl border border-line bg-white px-3"
+              type="number"
+              min={1}
+              inputMode="numeric"
+              aria-label={t.qty}
+              value={draft.qty || ""}
+              onChange={(event) => patch({ qty: Math.max(0, Math.floor(Number(event.target.value) || 0)) })}
+            />
+            <span className="mt-1 block text-xs text-muted">
+              {Math.max(1, Math.ceil(billed / BOX_CUPS))} {t.boxes}
+              {billed !== draft.qty ? ` · ${t.billedAs} ${billed.toLocaleString(locale)}` : ""}
+            </span>
+            <span className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-sm">
+              <span className="text-muted">{t.final}</span>
+              <span className="text-right"><SheetMoney kz={priced.tier.kz + freightKz / Math.max(1, billed)} /></span>
+              <span className="text-muted">{t.inLot}</span>
+              <span className="text-right"><SheetMoney kz={priced.tier.kz * billed + freightKz} /></span>
+            </span>
+          </li>
+        </ul>
+        <div className="hidden overflow-x-auto md:block">
           <table className="w-full min-w-[44rem] text-left text-sm">
             <thead className="text-muted">
               <tr className="border-t border-line">
