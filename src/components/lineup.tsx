@@ -466,17 +466,19 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
         const setLiquid = (item: { liquid: InstanceType<typeof THREE.Mesh>; foam: InstanceType<typeof THREE.Mesh> }, kind: "none" | "beer" | "soda") => {
           const mat = item.liquid.material as InstanceType<typeof THREE.MeshPhysicalMaterial>;
           if (kind === "beer") {
-            mat.color.set(0xf0b429);
-            mat.transmission = 0.45;
-            mat.attenuationColor.set(0xd4a017);
-            mat.attenuationDistance = item.liquid.position.y || 30;
+            mat.color.set(0xe8a820);
+            mat.transmission = 0.62;
+            mat.roughness = 0.04;
+            mat.attenuationColor.set(0xd4940a);
+            mat.attenuationDistance = 22;
             item.liquid.visible = true;
             item.foam.visible = true;
           } else if (kind === "soda") {
-            mat.color.set(0x1a0806);
-            mat.transmission = 0.25;
-            mat.attenuationColor.set(0x0a0201);
-            mat.attenuationDistance = 15;
+            mat.color.set(0x140806);
+            mat.transmission = 0.18;
+            mat.roughness = 0.06;
+            mat.attenuationColor.set(0x080201);
+            mat.attenuationDistance = 10;
             item.liquid.visible = true;
             item.foam.visible = false;
           } else {
