@@ -663,7 +663,6 @@ export function BlinkApp() {
             <div className="space-y-4">
               <div>
                 <h2 className="font-display text-2xl">{t.samplesTitle}</h2>
-                <p className="mt-1 text-sm text-muted">{t.cup1} · {t.samplesLead}</p>
                 <ul className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-7">
                   {SAMPLES.map((sample) => {
                     const texture = sample.id === "vetor" ? vectorShown : labels[sample.id];
@@ -694,7 +693,6 @@ export function BlinkApp() {
                 </ul>
               </div>
               <div>
-                <p className="text-sm text-muted">{t.cup2} · {t.samplesLead}</p>
                 <ul className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-7">
                   {SAMPLES.map((sample) => {
                     const texture = sample.id === "vetor" ? null : rightLabels?.[sample.id] ?? null;
@@ -733,7 +731,7 @@ export function BlinkApp() {
             <section className="overflow-hidden rounded-3xl border border-line bg-card">
             <div>
               <div className="grid grid-cols-2 items-stretch gap-2 bg-white px-2 pb-3">
-                <div className="relative h-64 overflow-hidden rounded-2xl border border-line bg-white">
+                <div className="relative h-64 overflow-hidden rounded-2xl border border-line bg-white" onDoubleClick={() => setSoloCard("beer")}>
                   <CupView
                     texture={wrapPrint(shown, pattern, pattern ? 0.9 : area.h / cup.height) ?? shown}
                     top={cup.top}
@@ -747,7 +745,7 @@ export function BlinkApp() {
                   />
                   <span className="absolute bottom-2 left-2 rounded bg-white/80 px-2 py-0.5 text-xs text-ink">{t.cup1}</span>
                 </div>
-                <div className="relative h-64 overflow-hidden rounded-2xl border border-line bg-white">
+                <div className="relative h-64 overflow-hidden rounded-2xl border border-line bg-white" onDoubleClick={() => setSoloCard("soda")}>
                   <CupView
                     texture={wrapPrint(otherTexture, rightPattern, rightPattern ? 0.9 : otherArea ? otherArea.h / other.height : 0.6) ?? otherTexture}
                     top={other.top}
