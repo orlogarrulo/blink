@@ -285,8 +285,8 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
         const ctx = wrap.getContext("2d");
         if (!ctx) return null;
         ctx.clearRect(0, 0, wrap.width, wrap.height);
-        const lip = 0.10;
-        const span = Math.min(Math.max(0.35, spanCover), 0.82);
+        const lip = 0.14;
+        const span = Math.min(Math.max(0.30, spanCover), 0.76);
         const y = lip * wrap.height;
         const band = span * wrap.height;
         if (motif) {
@@ -379,9 +379,9 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
 
         const fov = (camera.fov * Math.PI) / 180;
         const tan = Math.tan(fov / 2);
-        // More padding for single-cup shots so the full cup is not cropped
-        const pad = onlyCup ? 0.62 : 0.42;
-        const distMul = onlyCup ? 1.15 : 0.78;
+        // Generous padding for single-cup shots so the full cup is visible
+        const pad = onlyCup ? 0.72 : 0.42;
+        const distMul = onlyCup ? 1.35 : 0.78;
         const halfH = size.y * pad;
         const halfW = size.x * pad;
         const dist = Math.max(halfH / tan, halfW / (tan * Math.max(0.3, camera.aspect))) * distMul;
