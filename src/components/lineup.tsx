@@ -27,7 +27,7 @@ type Props = {
 
 const BOTTLE_H = 230;
 
-export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot, otherHeight, otherCover, otherTexture, otherBody = null, patternArt = null, otherPattern = null, spin, body = null, liquid = "none", otherLiquid = "none", mode = "frost", className, shotsRef, onViews }: Props) {
+export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot, otherHeight, otherCover, otherTexture, otherBody = null, patternArt = null, otherPattern = null, spin, body = null, liquid = "none", otherLiquid = "none", mode = "frost", solo = null, className, shotsRef, onViews }: Props) {
   const ref = useRef<HTMLCanvasElement>(null);
   const live = useRef({ texture, top, bot, heightMm, cover, otherTop, otherBot, otherHeight, otherCover, otherTexture, otherBody, patternArt, otherPattern, spin, body, liquid, otherLiquid, mode, solo });
   live.current = { texture, top, bot, heightMm, cover, otherTop, otherBot, otherHeight, otherCover, otherTexture, otherBody, patternArt, otherPattern, spin, body, liquid, otherLiquid, mode, solo };
