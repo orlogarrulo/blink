@@ -247,3 +247,23 @@ function mixWhite(hex: string) {
     return `rgb(${mix(r)},${mix(g)},${mix(b)})`;
   };
 }
+
+
+export function cupStills(
+  spec: CupDraw,
+  turns: number[],
+  width = 900,
+  height = 1200,
+): HTMLCanvasElement[] {
+  return turns.map((turn) => {
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return canvas;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, width, height);
+    drawCup(ctx, width, height, spec, turn);
+    return canvas;
+  });
+}
