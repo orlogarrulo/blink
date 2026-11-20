@@ -507,7 +507,7 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
             mat.needsUpdate = true;
             foamMat.map = foamTex;
             foamMat.needsUpdate = true;
-            bodyMat.transmission = 0.92;
+            bodyMat.transmission = 0.55;
             item.liquid.visible = true;
             item.foam.visible = true;
           } else if (kind === "soda") {
@@ -518,7 +518,7 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
             mat.opacity = 1;
             mat.transparent = false;
             mat.needsUpdate = true;
-            bodyMat.transmission = 0.92;
+            bodyMat.transmission = 0.55;
             item.liquid.visible = true;
             item.foam.visible = false;
             if (item.ice) item.ice.visible = true;
