@@ -82,9 +82,11 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
 
       const makeCup = (drink: "beer" | "soda", dims: { top: number; bot: number; height: number }) => {
         const spec = live.current;
-        const topR = dims.top / 2;
-        const botR = dims.bot / 2;
-        const height = dims.height;
+        const refH = 120;
+        const scale = refH / Math.max(1, dims.height);
+        const topR = (dims.top / 2) * scale;
+        const botR = (dims.bot / 2) * scale;
+        const height = dims.height * scale;
         const wall = Math.max(0.85, Math.min(topR, botR) * 0.055);
         const outerR = (t: number) => {
           let r = botR + (topR - botR) * t;
