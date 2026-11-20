@@ -16,6 +16,7 @@ export function CupView({ texture, top, bot, heightMm, cover, body = null, liqui
   const ref = useRef<HTMLCanvasElement>(null);
   const angle = useRef(0);
   const drag = useRef<{ x: number; a: number } | null>(null);
+  const paused = useRef(false);
   const live = useRef({ texture, top, bot, heightMm, cover, body, liquid, spin });
   live.current = { texture, top, bot, heightMm, cover, body, liquid, spin };
 
@@ -44,7 +45,7 @@ export function CupView({ texture, top, bot, heightMm, cover, body = null, liqui
 
       drawCup(ctx, width, height, spec, angle.current);
 
-      if (spec.spin && !reduce && !drag.current) angle.current += 0.007;
+      if (spec.spin && !reduce && !drag.current && !paused.current) angle.current += 0.007;
     };
 
     const draw = () => paint();
@@ -67,6 +68,8 @@ export function CupView({ texture, top, bot, heightMm, cover, body = null, liqui
       ref={ref}
       className={className ?? "h-80 w-full touch-none lg:h-[32rem]"}
       aria-label="Copo Ecocup. Arrasta para rodar."
+      onMouseEnter={() => { paused.current = true; }}
+      onMouseLeave={() => { paused.current = false; }}
       onPointerDown={(event) => {
         if (!spin) return;
         drag.current = { x: event.clientX, a: angle.current };
