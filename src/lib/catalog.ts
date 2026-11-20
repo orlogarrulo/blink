@@ -78,7 +78,7 @@ export const CUPS: Cup[] = [
     height: 100,
     measured: false,
     screen: { w: 162, h: 66 },
-    iml: null,
+    iml: { w: 160, h: 70 },
     digital: null,
     prices: tier([
       [1200, 2154.65],
@@ -218,7 +218,7 @@ export const CUPS: Cup[] = [
     height: 120,
     measured: true,
     screen: { w: 200, h: 30 },
-    iml: null,
+    iml: { w: 195, h: 85 },
     digital: null,
     prices: tier([
       [1200, 2535],
