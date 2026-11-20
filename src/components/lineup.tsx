@@ -378,9 +378,11 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
         camera.aspect = w / h;
         camera.fov = onlyCup ? 16 : 22;
 
-        if (onlyCup) {
-          cupSpin.updateMatrixWorld(true);
-          const box = new THREE.Box3().setFromObject(cupSpin);
+        const current = live.current;
+        const soloTarget = current.solo === "right" ? cupSpinRight : cupSpin;
+        if (onlyCup || current.solo) {
+          soloTarget.updateMatrixWorld(true);
+          const box = new THREE.Box3().setFromObject(soloTarget);
           const center = new THREE.Vector3();
           const size = new THREE.Vector3();
           box.getCenter(center);
