@@ -135,11 +135,11 @@ function drawCup(
       ctx.closePath();
       const frost = ctx.createLinearGradient(cx - topR, 0, cx + topR, 0);
       const milk = spec.body ? mixWhite(spec.body) : null;
-      frost.addColorStop(0, milk ? milk(0.72) : "#f7f7f6");
-      frost.addColorStop(0.16, milk ? milk(0.94) : "#ffffff");
-      frost.addColorStop(0.48, milk ? milk(0.86) : "#fbfbfb");
-      frost.addColorStop(0.78, milk ? milk(0.7) : "#f4f4f3");
-      frost.addColorStop(1, milk ? milk(0.5) : "#ececeb");
+      frost.addColorStop(0, milk ? milk(0.55) : "#f3f2f0");
+      frost.addColorStop(0.18, milk ? milk(0.82) : "#fafaf9");
+      frost.addColorStop(0.5, milk ? milk(0.74) : "#f6f5f3");
+      frost.addColorStop(0.8, milk ? milk(0.58) : "#efecea");
+      frost.addColorStop(1, milk ? milk(0.42) : "#e6e4e1");
       ctx.fillStyle = frost;
       ctx.fill();
       ctx.save();
@@ -163,8 +163,8 @@ function drawCup(
       ctx.clip();
       const sheen = ctx.createLinearGradient(cx - topR, 0, cx + topR, 0);
       sheen.addColorStop(0, "rgba(255,255,255,0)");
-      sheen.addColorStop(0.16, "rgba(255,255,255,0.22)");
-      sheen.addColorStop(0.28, "rgba(255,255,255,0)");
+      sheen.addColorStop(0.2, "rgba(255,255,255,0.12)");
+      sheen.addColorStop(0.35, "rgba(255,255,255,0)");
       sheen.addColorStop(1, "rgba(255,255,255,0)");
       ctx.fillStyle = sheen;
       ctx.fillRect(cx - topR, topCy, topR * 2, bodyH);
@@ -215,65 +215,35 @@ function drawCup(
           ctx.drawImage(spec.texture, sx, 0, sw, spec.texture.height, left - 0.6, y0, Math.max(1.2, right - left + 1.2), y1 - y0);
           ctx.restore();
         }
+        // subtle IML integration: soft milky veil so print feels embedded
+        ctx.save();
+        ctx.globalAlpha = 0.18;
+        ctx.fillStyle = "rgba(255,255,255,0.9)";
+        ctx.fillRect(cx - topR, y0, topR * 2, y1 - y0);
+        ctx.restore();
         ctx.restore();
       }
 
-      ctx.beginPath();
-      ctx.ellipse(cx, topCy + 0.4, topR * 0.9, ry * 0.72, 0, 0, Math.PI * 2);
-      const hole = ctx.createLinearGradient(cx, topCy - ry, cx, topCy + ry);
-      hole.addColorStop(0, "#f7f9fa");
-      hole.addColorStop(1, "#dfe6ea");
-      ctx.fillStyle = hole;
-      ctx.fill();
-
-      ctx.beginPath();
-      ctx.ellipse(cx, topCy, topR * 0.955, ry * 0.9, 0, 0, Math.PI * 2);
-      ctx.strokeStyle = "#fcfdfe";
-      ctx.lineWidth = Math.max(2.2, topR * 0.055);
-      ctx.stroke();
-
+      // rim / mouth - thin same-material lip
       ctx.beginPath();
       ctx.ellipse(cx, topCy, topR, ry, 0, 0, Math.PI * 2);
-      ctx.strokeStyle = "rgba(168, 176, 184, 0.6)";
-      ctx.lineWidth = 1.1;
+      ctx.strokeStyle = milk ? milk(0.3) : "#d8d6d3";
+      ctx.lineWidth = Math.max(1.2, topR * 0.04);
       ctx.stroke();
-
       ctx.beginPath();
-      ctx.ellipse(cx, topCy + 0.3, topR * 0.9, ry * 0.68, 0, 0, Math.PI * 2);
-      ctx.strokeStyle = "rgba(186, 194, 200, 0.9)";
-      ctx.lineWidth = 1;
+      ctx.ellipse(cx, topCy, topR * 0.92, ry * 0.7, 0, 0, Math.PI * 2);
+      ctx.strokeStyle = "rgba(255,255,255,0.35)";
+      ctx.lineWidth = Math.max(0.8, topR * 0.02);
       ctx.stroke();
-
-      const footRy = Math.max(2.2, botR * 0.11);
-      ctx.beginPath();
-      ctx.ellipse(cx, topCy + bodyH, botR, footRy, 0, 0, Math.PI);
-      ctx.strokeStyle = "rgba(176, 184, 190, 0.75)";
-      ctx.lineWidth = Math.max(1.3, topR * 0.016);
-      ctx.stroke();
-
 }
 
-export function cupStills(spec: CupDraw, angles: number[]): HTMLCanvasElement[] {
-  return angles.map((turn) => {
-    const canvas = document.createElement("canvas");
-    canvas.width = 640;
-    canvas.height = 820;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return canvas;
-    ctx.fillStyle = "#F6F0E6";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    drawCup(ctx, canvas.width, canvas.height, spec, turn);
-    return canvas;
-  });
-}
-function mixWhite(hex: string): (amount: number) => string {
+function mixWhite(hex: string) {
   const raw = hex.replace("#", "");
-  const value = Number.parseInt(raw.length === 3 ? raw.split("").map((c) => c + c).join("") : raw, 16);
-  const red = (value >> 16) & 255;
-  const green = (value >> 8) & 255;
-  const blue = value & 255;
-  return (amount) => {
-    const mix = (channel: number) => Math.round(channel + (255 - channel) * amount);
-    return `rgb(${mix(red)}, ${mix(green)}, ${mix(blue)})`;
+  const r = parseInt(raw.slice(0, 2), 16);
+  const g = parseInt(raw.slice(2, 4), 16);
+  const b = parseInt(raw.slice(4, 6), 16);
+  return (amount: number) => {
+    const mix = (c: number) => Math.round(c + (255 - c) * amount);
+    return `rgb(${mix(r)},${mix(g)},${mix(b)})`;
   };
 }
