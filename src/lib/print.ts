@@ -366,18 +366,19 @@ export function tintCanvas(source: HTMLCanvasElement, hex: string, process: Proc
   const data = frame.data;
   for (let i = 0; i < data.length; i += 4) {
     const alpha = data[i + 3];
-    if (alpha < 16) continue;
+    if (alpha < 8) continue;
     const r = data[i];
     const g = data[i + 1];
     const b = data[i + 2];
-    const ink = 1 - (r + g + b) / (255 * 3);
-    const target = (tr + tg + tb) / 3;
+    // Ink density from luminance (preserves anti-aliased edges cleanly)
+    const lum = (r * 0.299 + g * 0.587 + b * 0.114) / 255;
+    const ink = 1 - lum;
     data[i] = tr;
     data[i + 1] = tg;
     data[i + 2] = tb;
-    if (target > 236) data[i + 3] = alpha;
-    else if (process === "serigrafia") data[i + 3] = Math.round(alpha * Math.min(1, Math.max(ink, 0.35) * 1.2));
-    else data[i + 3] = alpha;
+    // Use ink density as alpha so edges stay sharp, not blurred
+    const edge = Math.min(1, ink * 1.15);
+    data[i + 3] = Math.round(alpha * edge);
   }
   ctx.putImageData(frame, 0, 0);
   return canvas;
