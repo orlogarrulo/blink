@@ -153,7 +153,7 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
         for (let i = 1; i <= 24; i += 1) {
           const t = i / 24;
           if (t > level) break;
-          pts.push(new THREE.Vector2(Math.max(1, outerR(t) - wall - 1.6), t * height));
+          pts.push(new THREE.Vector2(Math.max(1, outerR(t) - wall - 0.3), t * height));
         }
         pts.push(new THREE.Vector2(0.4, height * level));
         const liquid = new THREE.Mesh(
@@ -178,10 +178,24 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
           new THREE.MeshStandardMaterial({ color: 0xfff7ee, roughness: 0.9 }),
         );
         foam.scale.y = 0.28;
-        foam.position.y = height * 0.9;
+        foam.position.y = height * 0.94;
         foam.visible = drink === "beer";
         group.add(foam);
-        return { group, decalMat, liquid, foam, topR, botR, height };
+        // Ice cubes for soda
+        const iceGroup = new THREE.Group();
+        const iceMat = new THREE.MeshPhysicalMaterial({ color: 0xe8f4f8, roughness: 0.05, transmission: 0.7, thickness: 2, ior: 1.31, transparent: true });
+        for (let i = 0; i < 4; i += 1) {
+          const size = 4 + Math.random() * 3;
+          const ice = new THREE.Mesh(new THREE.BoxGeometry(size, size * 0.7, size), iceMat);
+          const angle = (i / 4) * Math.PI * 2;
+          const r = Math.max(2, outerR(0.85) - wall - 3);
+          ice.position.set(Math.cos(angle) * r * 0.4, height * 0.82 + Math.random() * 4, Math.sin(angle) * r * 0.4);
+          ice.rotation.set(Math.random() * 0.5, Math.random() * Math.PI, Math.random() * 0.5);
+          iceGroup.add(ice);
+        }
+        iceGroup.visible = false;
+        group.add(iceGroup);
+        return { group, decalMat, liquid, foam, ice: iceGroup, topR, botR, height };
       };
 
       const beer = makeCup("beer", { top: live.current.top, bot: live.current.bot, height: live.current.heightMm });
@@ -479,7 +493,7 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
           paint();
         }
         // Update liquid type
-        const setLiquid = (item: { liquid: InstanceType<typeof THREE.Mesh>; foam: InstanceType<typeof THREE.Mesh>; group: InstanceType<typeof THREE.Group> }, kind: "none" | "beer" | "soda") => {
+        const setLiquid = (item: { liquid: InstanceType<typeof THREE.Mesh>; foam: InstanceType<typeof THREE.Mesh>; ice?: InstanceType<typeof THREE.Group>; group: InstanceType<typeof THREE.Group> }, kind: "none" | "beer" | "soda") => {
           const mat = item.liquid.material as InstanceType<typeof THREE.MeshPhysicalMaterial>;
           const foamMat = item.foam.material as InstanceType<typeof THREE.MeshStandardMaterial>;
           const bodyMat = (item.group.children[0] as { material: { transmission: number } }).material;
@@ -507,9 +521,11 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
             bodyMat.transmission = 0.92;
             item.liquid.visible = true;
             item.foam.visible = false;
+            if (item.ice) item.ice.visible = true;
           } else {
             item.liquid.visible = false;
             item.foam.visible = false;
+            if (item.ice) item.ice.visible = false;
           }
         };
         setLiquid(beer, spec.liquid || "none");
