@@ -16,6 +16,8 @@ type Props = {
   otherPattern?: HTMLCanvasElement | null;
   spin: boolean;
   body?: string | null;
+  liquid?: "none" | "beer" | "soda";
+  otherLiquid?: "none" | "beer" | "soda";
   mode?: "frost" | "clear" | "studio";
   className?: string;
   shotsRef?: { current: ((turns: number[]) => HTMLCanvasElement[]) | null };
@@ -24,10 +26,10 @@ type Props = {
 
 const BOTTLE_H = 230;
 
-export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot, otherHeight, otherCover, otherTexture, otherBody = null, patternArt = null, otherPattern = null, spin, body = null, mode = "frost", className, shotsRef, onViews }: Props) {
+export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot, otherHeight, otherCover, otherTexture, otherBody = null, patternArt = null, otherPattern = null, spin, body = null, liquid = "none", otherLiquid = "none", mode = "frost", className, shotsRef, onViews }: Props) {
   const ref = useRef<HTMLCanvasElement>(null);
-  const live = useRef({ texture, top, bot, heightMm, cover, otherTop, otherBot, otherHeight, otherCover, otherTexture, otherBody, patternArt, otherPattern, spin, body, mode });
-  live.current = { texture, top, bot, heightMm, cover, otherTop, otherBot, otherHeight, otherCover, otherTexture, otherBody, patternArt, otherPattern, spin, body, mode };
+  const live = useRef({ texture, top, bot, heightMm, cover, otherTop, otherBot, otherHeight, otherCover, otherTexture, otherBody, patternArt, otherPattern, spin, body, liquid, otherLiquid, mode });
+  live.current = { texture, top, bot, heightMm, cover, otherTop, otherBot, otherHeight, otherCover, otherTexture, otherBody, patternArt, otherPattern, spin, body, liquid, otherLiquid, mode };
   const onViewsRef = useRef(onViews);
   onViewsRef.current = onViews;
   const shotsHolder = useRef(shotsRef);
@@ -159,17 +161,16 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
           }),
         );
         group.add(liquid);
-        if (drink === "beer") {
-          const headR = Math.max(2, outerR(0.9) - wall - 1);
-          const foam = new THREE.Mesh(
-            new THREE.SphereGeometry(headR, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2),
-            new THREE.MeshStandardMaterial({ color: 0xfff7ee, roughness: 0.9 }),
-          );
-          foam.scale.y = 0.28;
-          foam.position.y = height * 0.9;
-          group.add(foam);
-        }
-        return { group, decalMat, topR, botR, height };
+        const headR = Math.max(2, outerR(0.9) - wall - 1);
+        const foam = new THREE.Mesh(
+          new THREE.SphereGeometry(headR, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2),
+          new THREE.MeshStandardMaterial({ color: 0xfff7ee, roughness: 0.9 }),
+        );
+        foam.scale.y = 0.28;
+        foam.position.y = height * 0.9;
+        foam.visible = drink === "beer";
+        group.add(foam);
+        return { group, decalMat, liquid, foam, topR, botR, height };
       };
 
       const beer = makeCup("beer", { top: live.current.top, bot: live.current.bot, height: live.current.heightMm });
@@ -438,33 +439,18 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
           apply(beer.group);
           apply(soda.group);
         }
-        const applyPreset = (mat: { color: { set: (v: string | number) => void }; transmission: number; roughness: number; attenuationColor?: { set: (v: string | number) => void }; attenuationDistance?: number }, hex: string) => {
-          mat.color.set(hex || 0xffffff);
-          if (hex === "#C47A32" || hex.toLowerCase() === "#c47a32") {
-            mat.transmission = 0.55;
-            mat.roughness = 0.08;
-            if (mat.attenuationColor) mat.attenuationColor.set(0xb85a08);
-            if (mat.attenuationDistance !== undefined) mat.attenuationDistance = 18;
-          } else if (hex === "#2A0C08" || hex.toLowerCase() === "#2a0c08") {
-            mat.transmission = 0.42;
-            mat.roughness = 0.1;
-            if (mat.attenuationColor) mat.attenuationColor.set(0x120402);
-            if (mat.attenuationDistance !== undefined) mat.attenuationDistance = 12;
-          } else if (!hex) {
-            mat.transmission = 0.78;
-            mat.roughness = 0.12;
-          }
-        };
         if (beer.group.userData.tint !== tint) {
           beer.group.userData.tint = tint;
-          const mat = (beer.group.children[0] as { material: { color: { set: (v: string | number) => void }; transmission: number; roughness: number; attenuationColor?: { set: (v: string | number) => void }; attenuationDistance?: number } }).material;
-          applyPreset(mat, tint);
+          const mat = (beer.group.children[0] as { material: { color: { set: (v: string | number) => void }; transmission: number } }).material;
+          mat.color.set(tint || 0xffffff);
+          if (!tint) mat.transmission = 0.78;
         }
         const otherTint = spec.otherBody || "";
         if (soda.group.userData.tint !== otherTint) {
           soda.group.userData.tint = otherTint;
-          const mat2 = (soda.group.children[0] as { material: { color: { set: (v: string | number) => void }; transmission: number; roughness: number; attenuationColor?: { set: (v: string | number) => void }; attenuationDistance?: number } }).material;
-          applyPreset(mat2, otherTint);
+          const mat2 = (soda.group.children[0] as { material: { color: { set: (v: string | number) => void }; transmission: number } }).material;
+          mat2.color.set(otherTint || 0xffffff);
+          if (!otherTint) mat2.transmission = 0.78;
         }
         const texId = (c: HTMLCanvasElement | null) => c ? `${c.width}x${c.height}:${c.getContext("2d") ? 1 : 0}` : "0";
         const texKey = `${texId(spec.texture)}:${texId(spec.otherTexture)}:${spec.patternArt ? 1 : 0}:${spec.otherPattern ? 1 : 0}:${spec.cover}:${spec.otherCover}:${spec.texture === spec.otherTexture ? 1 : 0}`;
@@ -476,6 +462,31 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
           beer.group.userData.key = texKey;
           paint();
         }
+        // Update liquid type
+        const setLiquid = (item: { liquid: InstanceType<typeof THREE.Mesh>; foam: InstanceType<typeof THREE.Mesh> }, kind: "none" | "beer" | "soda") => {
+          const mat = item.liquid.material as InstanceType<typeof THREE.MeshPhysicalMaterial>;
+          if (kind === "beer") {
+            mat.color.set(0xf0b429);
+            mat.transmission = 0.45;
+            mat.attenuationColor.set(0xd4a017);
+            mat.attenuationDistance = item.liquid.position.y || 30;
+            item.liquid.visible = true;
+            item.foam.visible = true;
+          } else if (kind === "soda") {
+            mat.color.set(0x1a0806);
+            mat.transmission = 0.25;
+            mat.attenuationColor.set(0x0a0201);
+            mat.attenuationDistance = 15;
+            item.liquid.visible = true;
+            item.foam.visible = false;
+          } else {
+            item.liquid.visible = false;
+            item.foam.visible = false;
+          }
+        };
+        setLiquid(beer, spec.liquid || "none");
+        setLiquid(soda, spec.otherLiquid || "none");
+
         place();
         if (spec.spin && !drag.current) {
           if (!pausedLeft.current) angleLeft.current += 0.012;
