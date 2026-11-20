@@ -128,10 +128,11 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
         group.add(foot);
         const decalMat = new THREE.MeshStandardMaterial({
           transparent: true,
-          roughness: 0.32,
+          roughness: 0.28,
           polygonOffset: true,
-          polygonOffsetFactor: -2,
+          polygonOffsetFactor: -3,
           depthWrite: false,
+          opacity: 1,
         });
         const decal = new THREE.Mesh(geo, decalMat);
         decal.scale.setScalar(1.004);
@@ -305,12 +306,12 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
           }
         }
         if (source) {
-          const copies = 3;
+          const copies = 2;
           const slot = wrap.width / copies;
           const iw = source.width || 1;
           const ih = source.height || 1;
           for (let i = 0; i < copies; i += 1) {
-            const scale = Math.min((slot * 0.78) / iw, (band * 0.78) / ih);
+            const scale = Math.min((slot * 0.9) / iw, (band * 0.88) / ih);
             const dw = iw * scale;
             const dh = ih * scale;
             ctx.drawImage(source, i * slot + (slot - dw) / 2, y + (band - dh) / 2, dw, dh);
@@ -448,7 +449,8 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
           const mat2 = (soda.group.children[0] as { material: { color: { set: (v: string | number) => void } } }).material;
           mat2.color.set(otherTint || 0xffffff);
         }
-        const texKey = `${spec.texture ? 1 : 0}:${spec.otherTexture ? 1 : 0}:${spec.patternArt ? 1 : 0}:${spec.otherPattern ? 1 : 0}:${spec.cover}:${spec.otherCover}`;
+        const texId = (c: HTMLCanvasElement | null) => c ? `${c.width}x${c.height}:${c.getContext("2d") ? 1 : 0}` : "0";
+        const texKey = `${texId(spec.texture)}:${texId(spec.otherTexture)}:${spec.patternArt ? 1 : 0}:${spec.otherPattern ? 1 : 0}:${spec.cover}:${spec.otherCover}:${spec.texture === spec.otherTexture ? 1 : 0}`;
         if (beer.group.userData.tex !== spec.texture || soda.group.userData.tex !== spec.otherTexture || beer.group.userData.pat !== spec.patternArt || beer.group.userData.opat !== spec.otherPattern || beer.group.userData.key !== texKey) {
           beer.group.userData.tex = spec.texture;
           soda.group.userData.tex = spec.otherTexture;
