@@ -377,9 +377,9 @@ export function tintCanvas(source: HTMLCanvasElement, hex: string, process: Proc
     data[i + 1] = tg;
     data[i + 2] = tb;
     // Remove white background only if the target color is not white
-    const targetIsWhite = tr > 230 && tg > 230 && tb > 230;
-    const isWhite = r > 230 && g > 230 && b > 230;
-    if (!targetIsWhite && (isWhite || lum > 0.88)) {
+    const targetIsWhite = tr > 220 && tg > 220 && tb > 220;
+    const isWhite = r > 210 && g > 210 && b > 210;
+    if (!targetIsWhite && (isWhite || lum > 0.82)) {
       data[i + 3] = 0;
     } else {
       const targetLum = (tr * 0.299 + tg * 0.587 + tb * 0.114) / 255;
