@@ -376,9 +376,14 @@ export function tintCanvas(source: HTMLCanvasElement, hex: string, process: Proc
     data[i] = tr;
     data[i + 1] = tg;
     data[i + 2] = tb;
-    // Use ink density as alpha so edges stay sharp, not blurred
-    const edge = Math.min(1, ink * 1.15);
-    data[i + 3] = Math.round(alpha * edge);
+    // For light/white colors keep original alpha so the logo stays opaque on colored cups
+    const targetLum = (tr * 0.299 + tg * 0.587 + tb * 0.114) / 255;
+    if (targetLum > 0.85) {
+      data[i + 3] = alpha;
+    } else {
+      const edge = Math.min(1, ink * 1.15);
+      data[i + 3] = Math.round(alpha * edge);
+    }
   }
   ctx.putImageData(frame, 0, 0);
   return canvas;
@@ -667,8 +672,8 @@ export function wrapPrint(source: HTMLCanvasElement | null, motif: HTMLCanvasEle
   wrap.height = 1024;
   const ctx = wrap.getContext("2d");
   if (!ctx) return null;
-  const lip = 0.10;
-  const span = Math.min(Math.max(0.35, spanCover), 0.82);
+  const lip = 0.14;
+  const span = Math.min(Math.max(0.30, spanCover), 0.76);
   const y = lip * wrap.height;
   const band = span * wrap.height;
   const inkBox = (image: HTMLCanvasElement) => {
