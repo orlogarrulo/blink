@@ -393,15 +393,17 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
 
         const fov = (camera.fov * Math.PI) / 180;
         const tan = Math.tan(fov / 2);
-        // Generous padding for single-cup shots so the full cup is visible
-        const pad = onlyCup ? 0.72 : 0.42;
-        const distMul = onlyCup ? 1.35 : 0.78;
+        // For single-cup, frame the full height with margin above and below
+        const pad = onlyCup ? 0.85 : 0.42;
+        const distMul = onlyCup ? 1.5 : 0.78;
         const halfH = size.y * pad;
         const halfW = size.x * pad;
         const dist = Math.max(halfH / tan, halfW / (tan * Math.max(0.3, camera.aspect))) * distMul;
 
-        camera.position.set(center.x, center.y, dist);
-        camera.lookAt(center.x, center.y, 0);
+        // Look at the vertical center of the cup
+        const lookY = center.y;
+        camera.position.set(center.x, lookY, dist);
+        camera.lookAt(center.x, lookY, 0);
         camera.updateProjectionMatrix();
       };
       fit(false);
@@ -477,27 +479,32 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
           paint();
         }
         // Update liquid type
-        const setLiquid = (item: { liquid: InstanceType<typeof THREE.Mesh>; foam: InstanceType<typeof THREE.Mesh> }, kind: "none" | "beer" | "soda") => {
+        const setLiquid = (item: { liquid: InstanceType<typeof THREE.Mesh>; foam: InstanceType<typeof THREE.Mesh>; group: InstanceType<typeof THREE.Group> }, kind: "none" | "beer" | "soda") => {
           const mat = item.liquid.material as InstanceType<typeof THREE.MeshPhysicalMaterial>;
           const foamMat = item.foam.material as InstanceType<typeof THREE.MeshStandardMaterial>;
+          const bodyMat = (item.group.children[0] as { material: { transmission: number } }).material;
           if (kind === "beer") {
             mat.map = beerTex;
             mat.color.set(0xffffff);
-            mat.transmission = 0.15;
-            mat.roughness = 0.08;
+            mat.transmission = 0.0;
+            mat.roughness = 0.12;
             mat.opacity = 1;
+            mat.transparent = false;
             mat.needsUpdate = true;
             foamMat.map = foamTex;
             foamMat.needsUpdate = true;
+            bodyMat.transmission = 0.92;
             item.liquid.visible = true;
             item.foam.visible = true;
           } else if (kind === "soda") {
             mat.map = sodaTex;
             mat.color.set(0xffffff);
-            mat.transmission = 0.05;
-            mat.roughness = 0.1;
+            mat.transmission = 0.0;
+            mat.roughness = 0.15;
             mat.opacity = 1;
+            mat.transparent = false;
             mat.needsUpdate = true;
+            bodyMat.transmission = 0.92;
             item.liquid.visible = true;
             item.foam.visible = false;
           } else {
