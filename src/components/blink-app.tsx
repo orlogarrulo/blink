@@ -412,7 +412,7 @@ export function BlinkApp() {
   const rightOwn = Boolean(rightArt || rightPattern || right.phrase.trim());
   const rightId = right.sample ?? "medida";
   const rightShown = rightId !== "vetor" && rightLabels ? rightLabels[rightId] : null;
-  const otherTexture = rightOwn ? rightShown : null;
+  const otherTexture = rightOwn ? rightShown : (rightLabels && right.sample ? rightLabels[right.sample] ?? null : null);
   const colors = chosen ? dominantColors(chosen, 3) : [];
 
   async function exportCard(side: "beer" | "soda") {
