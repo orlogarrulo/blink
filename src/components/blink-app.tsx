@@ -741,7 +741,32 @@ export function BlinkApp() {
             <section className="overflow-hidden rounded-3xl border border-line bg-card">
             <div>
               <div className="relative h-72 bg-white sm:h-96">
+                <div className="absolute inset-y-0 left-0 flex w-1/4 items-center justify-center">
+                  <CupView
+                    texture={wrapPrint(shown, pattern, pattern ? 0.9 : area.h / cup.height) ?? shown}
+                    top={cup.top}
+                    bot={cup.bot}
+                    heightMm={cup.height}
+                    cover={pattern ? 0.9 : area.h / cup.height}
+                    body={cupTint}
+                    spin={false}
+                    className="h-full w-full"
+                  />
+                </div>
+                <div className="absolute inset-y-0 right-0 flex w-1/4 items-center justify-center">
+                  <CupView
+                    texture={wrapPrint(otherTexture, rightPattern, rightPattern ? 0.9 : otherArea ? otherArea.h / other.height : 0.6) ?? otherTexture}
+                    top={other.top}
+                    bot={other.bot}
+                    heightMm={other.height}
+                    cover={rightPattern ? 0.9 : otherArea ? otherArea.h / other.height : 0.6}
+                    body={right.cupTint}
+                    spin={false}
+                    className="h-full w-full"
+                  />
+                </div>
                 <Lineup
+                  hideCups
                   texture={shown}
                   top={cup.top}
                   bot={cup.bot}
@@ -776,7 +801,7 @@ export function BlinkApp() {
               <div className="grid grid-cols-2 gap-2 bg-white px-2 pb-3">
                 <div className="relative h-64 overflow-hidden rounded-2xl border border-line bg-white">
                   <CupView
-                    texture={shown}
+                    texture={wrapPrint(shown, pattern, pattern ? 0.9 : area.h / cup.height) ?? shown}
                     top={cup.top}
                     bot={cup.bot}
                     heightMm={cup.height}
@@ -789,7 +814,7 @@ export function BlinkApp() {
                 </div>
                 <div className="relative h-64 overflow-hidden rounded-2xl border border-line bg-white">
                   <CupView
-                    texture={otherTexture}
+                    texture={wrapPrint(otherTexture, rightPattern, rightPattern ? 0.9 : otherArea ? otherArea.h / other.height : 0.6) ?? otherTexture}
                     top={other.top}
                     bot={other.bot}
                     heightMm={other.height}
