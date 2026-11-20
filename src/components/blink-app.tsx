@@ -659,14 +659,6 @@ export function BlinkApp() {
         <div className="space-y-6">
         <div className="space-y-4">
           {error ? <p className="border-l-4 border-pitanga pl-3 text-sm">{error}</p> : null}
-          {area ? (
-            <p className="text-sm text-muted">
-              {cup.name}
-              {cup.measured ? ` · ${cup.height} × ${t.mouth} ${cup.top} × ${t.base} ${cup.bot} mm` : ` · ${t.unmeasured}`}
-              {` · ${t.window} ${area.w} × ${area.h} mm`}
-            </p>
-          ) : null}
-
           {(art || pattern || draft.phrase.trim()) && labels ? (
             <div className="space-y-4">
               <div>
@@ -740,7 +732,7 @@ export function BlinkApp() {
           {area ? (
             <section className="overflow-hidden rounded-3xl border border-line bg-card">
             <div>
-              <div className="grid grid-cols-2 gap-2 bg-white px-2 pb-3">
+              <div className="grid grid-cols-2 items-stretch gap-2 bg-white px-2 pb-3">
                 <div className="relative h-64 overflow-hidden rounded-2xl border border-line bg-white">
                   <CupView
                     texture={wrapPrint(shown, pattern, pattern ? 0.9 : area.h / cup.height) ?? shown}
@@ -1100,6 +1092,9 @@ export function BlinkApp() {
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setSoloCard(null)}>
             <div className="relative max-h-[90vh] w-full max-w-md overflow-y-auto rounded-3xl bg-white p-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
               <h3 className="font-display text-lg">{item.name} · {item.height} mm</h3>
+              <p className="text-sm text-muted">
+                {item.measured ? `${item.height} × boca ${item.top} × base ${item.bot} mm` : ""}
+              </p>
               <p className="text-xs text-muted">Toca para pausar, solta para continuar</p>
               <div className="relative mt-3 h-80 rounded-2xl bg-white">
                 <Lineup
