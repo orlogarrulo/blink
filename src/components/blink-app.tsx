@@ -708,6 +708,10 @@ export function BlinkApp() {
                     <label className="flex min-h-11 cursor-pointer items-center justify-center rounded-xl border border-dashed border-line px-1 text-center text-xs">{t.logo}<input className="sr-only" type="file" multiple accept="application/pdf,image/png,image/jpeg,image/webp,image/svg+xml" onChange={(event) => { void onFiles(event.target.files, "logo", "beer"); event.target.value = ""; }} /></label>
                     <label className="flex min-h-11 cursor-pointer items-center justify-center rounded-xl border border-dashed border-line px-1 text-center text-xs">{t.pattern}<input className="sr-only" type="file" multiple accept="application/pdf,image/png,image/jpeg,image/webp,image/svg+xml" onChange={(event) => { void onFiles(event.target.files, "pattern", "beer"); event.target.value = ""; }} /></label>
                   </div>
+                  <div className="mt-1 grid grid-cols-2 gap-1">
+                    <button type="button" className={`min-h-11 rounded-xl border px-1 text-xs ${cupTint === "#C47A32" ? "border-ink bg-amber-50" : "border-line"}`} onClick={() => setCupTint(cupTint === "#C47A32" ? null : "#C47A32")}>Cerveja</button>
+                    <button type="button" className={`min-h-11 rounded-xl border px-1 text-xs ${cupTint === "#2A0C08" ? "border-ink bg-red-50" : "border-line"}`} onClick={() => setCupTint(cupTint === "#2A0C08" ? null : "#2A0C08")}>Refrigerante</button>
+                  </div>
                   <ul className="mt-1 space-y-1">
                     {logos.map((item, index) => (
                       <li key={`bl-${item.name}-${index}`} className="flex items-center justify-between gap-1 text-xs"><span className="min-w-0 truncate">{item.name}</span><button type="button" className="min-h-11 shrink-0 px-2" onClick={() => setLogos((current) => current.filter((_, i) => i !== index))}>{t.remove}</button></li>
@@ -772,6 +776,10 @@ export function BlinkApp() {
                   <div className="mt-2 grid grid-cols-2 gap-1">
                     <label className="flex min-h-11 cursor-pointer items-center justify-center rounded-xl border border-dashed border-line px-1 text-center text-xs">{t.logo}<input className="sr-only" type="file" multiple accept="application/pdf,image/png,image/jpeg,image/webp,image/svg+xml" onChange={(event) => { void onFiles(event.target.files, "logo", "soda"); event.target.value = ""; }} /></label>
                     <label className="flex min-h-11 cursor-pointer items-center justify-center rounded-xl border border-dashed border-line px-1 text-center text-xs">{t.pattern}<input className="sr-only" type="file" multiple accept="application/pdf,image/png,image/jpeg,image/webp,image/svg+xml" onChange={(event) => { void onFiles(event.target.files, "pattern", "soda"); event.target.value = ""; }} /></label>
+                  </div>
+                  <div className="mt-1 grid grid-cols-2 gap-1">
+                    <button type="button" className={`min-h-11 rounded-xl border px-1 text-xs ${right.cupTint === "#C47A32" ? "border-ink bg-amber-50" : "border-line"}`} onClick={() => setRight((c) => ({ ...c, cupTint: c.cupTint === "#C47A32" ? null : "#C47A32" }))}>Cerveja</button>
+                    <button type="button" className={`min-h-11 rounded-xl border px-1 text-xs ${right.cupTint === "#2A0C08" ? "border-ink bg-red-50" : "border-line"}`} onClick={() => setRight((c) => ({ ...c, cupTint: c.cupTint === "#2A0C08" ? null : "#2A0C08" }))}>Refrigerante</button>
                   </div>
                   <ul className="mt-1 space-y-1">
                     {rightLogos.map((item, index) => (
