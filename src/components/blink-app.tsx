@@ -488,7 +488,21 @@ export function BlinkApp() {
       freightNote: `aéreo  ·  ${numbers.charge} ${item.name}`,
     });
     const turns = [0, Math.PI * 0.28, Math.PI * 0.5];
-    const solid = shotsRef.current?.(turns, side) ?? [];
+    // Use realistic mockups independent of the 3D scene
+    const mockupUrls = ["/mockups/mockup-front.jpg", "/mockups/mockup-threequarter.jpg", "/mockups/mockup-side.jpg"];
+    const solid = await Promise.all(mockupUrls.map((url) => new Promise<HTMLCanvasElement>((resolve) => {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => {
+        const c = document.createElement("canvas");
+        c.width = 600;
+        c.height = 900;
+        c.getContext("2d")?.drawImage(img, 0, 0, 600, 900);
+        resolve(c);
+      };
+      img.onerror = () => resolve(document.createElement("canvas"));
+      img.src = url;
+    })));
     const fallback = cupStills(
       {
         texture: wrapPrint(texture, motif, motif ? 0.9 : itemArea.h / item.height) ?? texture,
