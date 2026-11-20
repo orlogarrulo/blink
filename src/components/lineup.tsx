@@ -373,9 +373,12 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
 
         const fov = (camera.fov * Math.PI) / 180;
         const tan = Math.tan(fov / 2);
-        const halfH = size.y * 0.38;
-        const halfW = size.x * 0.38;
-        const dist = Math.max(halfH / tan, halfW / (tan * Math.max(0.3, camera.aspect))) * 0.72;
+        // More padding for single-cup shots so the full cup is not cropped
+        const pad = onlyCup ? 0.62 : 0.42;
+        const distMul = onlyCup ? 1.15 : 0.78;
+        const halfH = size.y * pad;
+        const halfW = size.x * pad;
+        const dist = Math.max(halfH / tan, halfW / (tan * Math.max(0.3, camera.aspect))) * distMul;
 
         camera.position.set(center.x, center.y, dist);
         camera.lookAt(center.x, center.y, 0);
@@ -433,13 +436,13 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
         if (beer.group.userData.tint !== tint) {
           beer.group.userData.tint = tint;
           const mat = (beer.group.children[0] as { material: { color: { set: (v: string | number) => void } } }).material;
-          mat.color.set(tint || 0xf4f1ec);
+          mat.color.set(tint || 0x1a5c3a);
         }
         const otherTint = spec.otherBody || "";
         if (soda.group.userData.tint !== otherTint) {
           soda.group.userData.tint = otherTint;
           const mat2 = (soda.group.children[0] as { material: { color: { set: (v: string | number) => void } } }).material;
-          mat2.color.set(otherTint || 0xf4f1ec);
+          mat2.color.set(otherTint || 0x1a5c3a);
         }
         const texKey = `${spec.texture ? 1 : 0}:${spec.otherTexture ? 1 : 0}:${spec.patternArt ? 1 : 0}:${spec.otherPattern ? 1 : 0}:${spec.cover}:${spec.otherCover}`;
         if (beer.group.userData.tex !== spec.texture || soda.group.userData.tex !== spec.otherTexture || beer.group.userData.pat !== spec.patternArt || beer.group.userData.opat !== spec.otherPattern || beer.group.userData.key !== texKey) {
