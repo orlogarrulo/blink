@@ -13,6 +13,7 @@ type Props = {
   otherTexture: HTMLCanvasElement | null;
   otherBody?: string | null;
   patternArt?: HTMLCanvasElement | null;
+  otherPattern?: HTMLCanvasElement | null;
   spin: boolean;
   body?: string | null;
   mode?: "frost" | "clear" | "studio";
@@ -23,16 +24,19 @@ type Props = {
 
 const BOTTLE_H = 230;
 
-export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot, otherHeight, otherCover, otherTexture, otherBody = null, patternArt = null, spin, body = null, mode = "frost", className, shotsRef, onViews }: Props) {
+export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot, otherHeight, otherCover, otherTexture, otherBody = null, patternArt = null, otherPattern = null, spin, body = null, mode = "frost", className, shotsRef, onViews }: Props) {
   const ref = useRef<HTMLCanvasElement>(null);
-  const live = useRef({ texture, top, bot, heightMm, cover, otherTop, otherBot, otherHeight, otherCover, otherTexture, otherBody, patternArt, spin, body, mode });
-  live.current = { texture, top, bot, heightMm, cover, otherTop, otherBot, otherHeight, otherCover, otherTexture, otherBody, patternArt, spin, body, mode };
+  const live = useRef({ texture, top, bot, heightMm, cover, otherTop, otherBot, otherHeight, otherCover, otherTexture, otherBody, patternArt, otherPattern, spin, body, mode });
+  live.current = { texture, top, bot, heightMm, cover, otherTop, otherBot, otherHeight, otherCover, otherTexture, otherBody, patternArt, otherPattern, spin, body, mode };
   const onViewsRef = useRef(onViews);
   onViewsRef.current = onViews;
   const shotsHolder = useRef(shotsRef);
   shotsHolder.current = shotsRef;
-  const angle = useRef(0);
-  const drag = useRef<{ x: number; y: number; a: number } | null>(null);
+  const angleLeft = useRef(0);
+  const angleRight = useRef(0);
+  const pausedLeft = useRef(false);
+  const pausedRight = useRef(false);
+  const drag = useRef<{ x: number; y: number; a: number; side: "left" | "right" | null } | null>(null);
 
   useEffect(() => {
     const canvas = ref.current;
@@ -297,8 +301,16 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
           }
         }
         if (source) {
-          const slot = motif ? wrap.width * 0.5 : wrap.width;
-          ctx.drawImage(source, (wrap.width - slot) / 2, y, slot, band);
+          const copies = 3;
+          const slot = wrap.width / copies;
+          const iw = source.width || 1;
+          const ih = source.height || 1;
+          for (let i = 0; i < copies; i += 1) {
+            const scale = Math.min((slot * 0.78) / iw, (band * 0.78) / ih);
+            const dw = iw * scale;
+            const dh = ih * scale;
+            ctx.drawImage(source, i * slot + (slot - dw) / 2, y + (band - dh) / 2, dw, dh);
+          }
         }
         if (!motif && !source) return null;
         const next = new THREE.CanvasTexture(wrap);
@@ -313,7 +325,7 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
         sodaMap?.dispose();
         const current = live.current;
         beerMap = paintWrap(current.texture, current.cover, current.patternArt);
-        sodaMap = paintWrap(current.otherTexture ?? current.texture, current.otherCover, current.patternArt);
+        sodaMap = paintWrap(current.otherTexture, current.otherCover, current.otherPattern);
         beer.decalMat.map = beerMap;
         soda.decalMat.map = sodaMap;
         beer.decalMat.needsUpdate = true;
@@ -361,9 +373,9 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
 
         const fov = (camera.fov * Math.PI) / 180;
         const tan = Math.tan(fov / 2);
-        const halfH = size.y * 0.55;
-        const halfW = size.x * 0.55;
-        const dist = Math.max(halfH / tan, halfW / (tan * Math.max(0.3, camera.aspect))) * 1.2;
+        const halfH = size.y * 0.38;
+        const halfW = size.x * 0.38;
+        const dist = Math.max(halfH / tan, halfW / (tan * Math.max(0.3, camera.aspect))) * 0.72;
 
         camera.position.set(center.x, center.y, dist);
         camera.lookAt(center.x, center.y, 0);
@@ -429,18 +441,22 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
           const mat2 = (soda.group.children[0] as { material: { color: { set: (v: string | number) => void } } }).material;
           mat2.color.set(otherTint || 0xf4f1ec);
         }
-        const texKey = `${spec.texture ? 1 : 0}:${spec.otherTexture ? 1 : 0}:${spec.patternArt ? 1 : 0}:${spec.cover}:${spec.otherCover}`;
-        if (beer.group.userData.tex !== spec.texture || soda.group.userData.tex !== spec.otherTexture || beer.group.userData.pat !== spec.patternArt || beer.group.userData.key !== texKey) {
+        const texKey = `${spec.texture ? 1 : 0}:${spec.otherTexture ? 1 : 0}:${spec.patternArt ? 1 : 0}:${spec.otherPattern ? 1 : 0}:${spec.cover}:${spec.otherCover}`;
+        if (beer.group.userData.tex !== spec.texture || soda.group.userData.tex !== spec.otherTexture || beer.group.userData.pat !== spec.patternArt || beer.group.userData.opat !== spec.otherPattern || beer.group.userData.key !== texKey) {
           beer.group.userData.tex = spec.texture;
           soda.group.userData.tex = spec.otherTexture;
           beer.group.userData.pat = spec.patternArt;
+          beer.group.userData.opat = spec.otherPattern;
           beer.group.userData.key = texKey;
           paint();
         }
         place();
-        if (spec.spin && !drag.current) angle.current += 0.012;
-        cupSpin.rotation.y = angle.current;
-        cupSpinRight.rotation.y = angle.current;
+        if (spec.spin && !drag.current) {
+          if (!pausedLeft.current) angleLeft.current += 0.012;
+          if (!pausedRight.current) angleRight.current += 0.012;
+        }
+        cupSpin.rotation.y = angleLeft.current;
+        cupSpinRight.rotation.y = angleRight.current;
         renderer.render(scene, camera);
         frame = requestAnimationFrame(loop);
       };
@@ -468,13 +484,36 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
       ref={ref}
       className={className ?? "h-[32rem] w-full"}
       aria-label="Copo, garrafa e lata na mesma escala"
-      onPointerDown={(event) => {
-        drag.current = { x: event.clientX, y: event.clientY, a: angle.current };
-        event.currentTarget.setPointerCapture(event.pointerId);
-      }}
       onPointerMove={(event) => {
-        if (!drag.current) return;
-        angle.current = drag.current.a + (event.clientX - drag.current.x) * 0.01;
+        const rect = event.currentTarget.getBoundingClientRect();
+        const x = event.clientX - rect.left;
+        const mid = rect.width / 2;
+        // Approximate: left half is left cup, right half is right cup (bottle/can in middle)
+        const onLeft = x < mid * 0.55;
+        const onRight = x > mid * 1.45;
+        pausedLeft.current = onLeft;
+        pausedRight.current = onRight;
+        if (drag.current) {
+          const delta = (event.clientX - drag.current.x) * 0.01;
+          if (drag.current.side === "left") angleLeft.current = drag.current.a + delta;
+          else if (drag.current.side === "right") angleRight.current = drag.current.a + delta;
+          else {
+            angleLeft.current = drag.current.a + delta;
+            angleRight.current = drag.current.a + delta;
+          }
+        }
+      }}
+      onPointerLeave={() => {
+        pausedLeft.current = false;
+        pausedRight.current = false;
+      }}
+      onPointerDown={(event) => {
+        const rect = event.currentTarget.getBoundingClientRect();
+        const x = event.clientX - rect.left;
+        const mid = rect.width / 2;
+        const side = x < mid ? "left" : "right";
+        drag.current = { x: event.clientX, y: event.clientY, a: side === "left" ? angleLeft.current : angleRight.current, side };
+        event.currentTarget.setPointerCapture(event.pointerId);
       }}
       onPointerUp={(event) => {
         const start = drag.current;
