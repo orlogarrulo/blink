@@ -345,18 +345,28 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
         if (!onlyCup && (w < 2 || h < 2)) return;
         if (!onlyCup) renderer.setSize(w, h, false);
         camera.aspect = w / h;
-        camera.fov = onlyCup ? 18 : 20;
-        const height = live.current.heightMm;
-        // Center vertically on the visual middle of the group (base at 0, tallest is bottle)
-        // Force visual center lower so the group sits in the middle of the canvas
-        const lookY = onlyCup ? height * 0.48 : BOTTLE_H * 0.38;
+        camera.fov = onlyCup ? 18 : 22;
+
+        // Compute real bounds of the visible objects
+        const box = new THREE.Box3();
+        if (onlyCup) {
+          box.setFromObject(cupSpin);
+        } else {
+          box.setFromObject(root);
+        }
+        const center = new THREE.Vector3();
+        const size = new THREE.Vector3();
+        box.getCenter(center);
+        box.getSize(size);
+
         const fov = (camera.fov * Math.PI) / 180;
         const tan = Math.tan(fov / 2);
-        const halfH = onlyCup ? height * 0.58 : BOTTLE_H * 0.48;
-        const halfW = onlyCup ? Math.max(live.current.top * 0.65, height * 0.42) : metrics().span * 0.50;
-        const dist = Math.max(halfH / tan, halfW / (tan * Math.max(0.25, camera.aspect))) * 1.25;
-        camera.position.set(0, lookY, dist);
-        camera.lookAt(0, lookY, 0);
+        const halfH = size.y * 0.55;
+        const halfW = size.x * 0.55;
+        const dist = Math.max(halfH / tan, halfW / (tan * Math.max(0.3, camera.aspect))) * 1.2;
+
+        camera.position.set(center.x, center.y, dist);
+        camera.lookAt(center.x, center.y, 0);
         camera.updateProjectionMatrix();
       };
       fit(false);
