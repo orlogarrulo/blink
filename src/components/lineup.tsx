@@ -115,7 +115,7 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
         const group = new THREE.Group();
         group.add(mesh);
         const rim = new THREE.Mesh(
-          new THREE.TorusGeometry(topR * 0.992, Math.max(0.12, topR * 0.008), 8, 64),
+          new THREE.TorusGeometry(topR * 0.995, Math.max(0.08, topR * 0.005), 6, 64),
           new THREE.MeshPhysicalMaterial({
             color: spec.body || 0xffffff,
             roughness: 0.14,
@@ -310,8 +310,8 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
         const ctx = wrap.getContext("2d");
         if (!ctx) return null;
         ctx.clearRect(0, 0, wrap.width, wrap.height);
-        const lip = 0.18;
-        const span = Math.min(Math.max(0.28, spanCover), 0.70);
+        const lip = 0.22;
+        const span = Math.min(Math.max(0.25, spanCover), 0.65);
         const y = lip * wrap.height;
         const band = span * wrap.height;
         if (motif) {
@@ -332,7 +332,7 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
           }
         }
         if (source) {
-          const copies = 2;
+          const copies = 3;
           const slot = wrap.width / copies;
           const iw = source.width || 1;
           const ih = source.height || 1;
@@ -349,8 +349,8 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
         next.anisotropy = renderer.capabilities.getMaxAnisotropy();
         next.wrapS = THREE.ClampToEdgeWrapping;
         next.wrapT = THREE.ClampToEdgeWrapping;
-        next.offset.set(0, 0.12);
-        next.repeat.set(1, 0.76);
+        next.offset.set(0, 0.16);
+        next.repeat.set(1, 0.68);
         next.needsUpdate = true;
         return next;
       };
