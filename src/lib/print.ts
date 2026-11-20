@@ -667,8 +667,8 @@ export function wrapPrint(source: HTMLCanvasElement | null, motif: HTMLCanvasEle
   wrap.height = 1024;
   const ctx = wrap.getContext("2d");
   if (!ctx) return null;
-  const lip = 0.04;
-  const span = Math.min(Math.max(0.35, spanCover), 0.92);
+  const lip = 0.10;
+  const span = Math.min(Math.max(0.35, spanCover), 0.82);
   const y = lip * wrap.height;
   const band = span * wrap.height;
   const inkBox = (image: HTMLCanvasElement) => {
