@@ -394,14 +394,17 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
         camera.fov = onlyCup ? 16 : 22;
 
         if (onlyCup) {
-          // Frame the single cup by its known height, centered
-          const cupH = beer.height;
-          const lookY = cupH * 0.48;
+          const box = new THREE.Box3().setFromObject(cupSpin);
+          const center = new THREE.Vector3();
+          const size = new THREE.Vector3();
+          box.getCenter(center);
+          box.getSize(size);
           const fov = (camera.fov * Math.PI) / 180;
           const tan = Math.tan(fov / 2);
-          const dist = (cupH * 0.7) / tan;
-          camera.position.set(0, lookY, dist);
-          camera.lookAt(0, lookY, 0);
+          const margin = 1.25;
+          const dist = Math.max((size.y * margin) / (2 * tan), (size.x * margin) / (2 * tan * camera.aspect));
+          camera.position.set(center.x, center.y, dist);
+          camera.lookAt(center.x, center.y, 0);
         } else {
           const box = new THREE.Box3().setFromObject(root);
           const center = new THREE.Vector3();
