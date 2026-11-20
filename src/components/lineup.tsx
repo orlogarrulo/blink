@@ -285,8 +285,8 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
         const ctx = wrap.getContext("2d");
         if (!ctx) return null;
         ctx.clearRect(0, 0, wrap.width, wrap.height);
-        const lip = 0.04;
-        const span = Math.min(Math.max(0.35, spanCover), 0.92);
+        const lip = 0.10;
+        const span = Math.min(Math.max(0.35, spanCover), 0.82);
         const y = lip * wrap.height;
         const band = span * wrap.height;
         if (motif) {
