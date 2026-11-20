@@ -376,9 +376,10 @@ export function tintCanvas(source: HTMLCanvasElement, hex: string, process: Proc
     data[i] = tr;
     data[i + 1] = tg;
     data[i + 2] = tb;
-    // Remove white/near-white background (logos often have white bg that shows as spots)
+    // Remove white background only if the target color is not white
+    const targetIsWhite = tr > 230 && tg > 230 && tb > 230;
     const isWhite = r > 230 && g > 230 && b > 230;
-    if (isWhite || lum > 0.88) {
+    if (!targetIsWhite && (isWhite || lum > 0.88)) {
       data[i + 3] = 0;
     } else {
       const targetLum = (tr * 0.299 + tg * 0.587 + tb * 0.114) / 255;
