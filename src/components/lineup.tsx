@@ -13,20 +13,19 @@ type Props = {
   otherTexture: HTMLCanvasElement | null;
   otherBody?: string | null;
   patternArt?: HTMLCanvasElement | null;
+  otherPattern?: HTMLCanvasElement | null;
   spin: boolean;
   body?: string | null;
   mode?: "frost" | "clear" | "studio";
   className?: string;
-  shotsRef?: { current: ((turns: number[]) => HTMLCanvasElement[]) | null };
+  shotsRef?: { current: ((turns: number[], side?: "beer" | "soda") => HTMLCanvasElement[]) | null };
   onViews?: (shots: HTMLCanvasElement[]) => void;
 };
 
-const BOTTLE_H = 230;
-
-export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot, otherHeight, otherCover, otherTexture, otherBody = null, patternArt = null, spin, body = null, mode = "frost", className, shotsRef, onViews }: Props) {
+export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot, otherHeight, otherCover, otherTexture, otherBody = null, patternArt = null, otherPattern = null, spin, body = null, mode = "frost", className, shotsRef, onViews }: Props) {
   const ref = useRef<HTMLCanvasElement>(null);
-  const live = useRef({ texture, top, bot, heightMm, cover, otherTop, otherBot, otherHeight, otherCover, otherTexture, otherBody, patternArt, spin, body, mode });
-  live.current = { texture, top, bot, heightMm, cover, otherTop, otherBot, otherHeight, otherCover, otherTexture, otherBody, patternArt, spin, body, mode };
+  const live = useRef({ texture, top, bot, heightMm, cover, otherTop, otherBot, otherHeight, otherCover, otherTexture, otherBody, patternArt, otherPattern, spin, body, mode });
+  live.current = { texture, top, bot, heightMm, cover, otherTop, otherBot, otherHeight, otherCover, otherTexture, otherBody, patternArt, otherPattern, spin, body, mode };
   const onViewsRef = useRef(onViews);
   onViewsRef.current = onViews;
   const shotsHolder = useRef(shotsRef);
@@ -305,7 +304,7 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
         sodaMap?.dispose();
         const current = live.current;
         beerMap = paintWrap(current.texture, current.cover, current.patternArt);
-        sodaMap = paintWrap(current.otherTexture ?? current.texture, current.otherCover, current.patternArt);
+        sodaMap = paintWrap(current.otherTexture ?? current.texture, current.otherCover, current.otherPattern ?? current.patternArt);
         beer.decalMat.map = beerMap;
         soda.decalMat.map = sodaMap;
         beer.decalMat.needsUpdate = true;
@@ -337,33 +336,44 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
         if (!onlyCup && (w < 2 || h < 2)) return;
         if (!onlyCup) renderer.setSize(w, h, false);
         camera.aspect = w / h;
-        camera.fov = onlyCup ? 18 : 22;
-        const height = live.current.heightMm;
-        const lookY = onlyCup ? height * 0.5 : BOTTLE_H * 0.5;
-        const fov = (camera.fov * Math.PI) / 180;
-        const tan = Math.tan(fov / 2);
-        const halfH = (onlyCup ? height * 0.62 : BOTTLE_H * 0.58);
-        const halfW = onlyCup ? Math.max(live.current.top * 0.7, height * 0.45) : metrics().span * 0.55;
-        const dist = Math.max(halfH / tan, halfW / (tan * Math.max(0.2, camera.aspect))) * 1.08;
-        camera.position.set(0, lookY, dist);
-        camera.lookAt(0, lookY, 0);
+        camera.fov = onlyCup ? 18 : 28;
+        camera.updateProjectionMatrix();
+        const box = new THREE.Box3().setFromObject(onlyCup ? cupSpin : root);
+        if (box.isEmpty()) return;
+        const size = box.getSize(new THREE.Vector3());
+        const center = box.getCenter(new THREE.Vector3());
+        const vFov = (camera.fov * Math.PI) / 180;
+        const distH = (size.y * 0.72) / Math.tan(vFov / 2);
+        const hFov = 2 * Math.atan(Math.tan(vFov / 2) * camera.aspect);
+        const distW = (size.x * 0.62) / Math.tan(hFov / 2);
+        const dist = Math.max(distH, distW);
+        camera.position.set(center.x, center.y, dist);
+        camera.lookAt(center.x, center.y, 0);
         camera.updateProjectionMatrix();
       };
       fit(false);
       const observer = new ResizeObserver(() => fit(false));
       observer.observe(canvas);
 
-      const shootCup = (turns: number[]) => {
-        const saved = cupSpin.rotation.y;
-        const hidden = [bottle, can, cupSpinRight];
+      const shootCup = (turns: number[], side: "beer" | "soda" = "beer") => {
+        const target = side === "soda" ? cupSpinRight : cupSpin;
+        const spare = side === "soda" ? cupSpin : cupSpinRight;
+        const saved = target.rotation.y;
+        const hidden = [bottle, can, spare];
         hidden.forEach((item) => {
           item.visible = false;
         });
-        cupSpin.position.x = 0;
+        const snap = { heightMm: live.current.heightMm, top: live.current.top, bot: live.current.bot };
+        if (side === "soda") {
+          live.current.heightMm = live.current.otherHeight;
+          live.current.top = live.current.otherTop;
+          live.current.bot = live.current.otherBot;
+        }
+        target.position.x = 0;
         renderer.setPixelRatio(2);
         renderer.setClearColor(0xffffff, 1);
         const frames = turns.map((turn) => {
-          cupSpin.rotation.y = turn;
+          target.rotation.y = turn;
           renderer.setSize(900, 1200, false);
           fit(true);
           renderer.render(scene, camera);
@@ -376,7 +386,10 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
         hidden.forEach((item) => {
           item.visible = true;
         });
-        cupSpin.rotation.y = saved;
+        live.current.heightMm = snap.heightMm;
+        live.current.top = snap.top;
+        live.current.bot = snap.bot;
+        target.rotation.y = saved;
         place();
         renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
         fit(false);
@@ -409,15 +422,17 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
           const mat2 = (soda.group.children[0] as { material: { color: { set: (v: string | number) => void } } }).material;
           mat2.color.set(otherTint || 0xf4f1ec);
         }
-        const texKey = `${spec.texture ? 1 : 0}:${spec.otherTexture ? 1 : 0}:${spec.patternArt ? 1 : 0}:${spec.cover}:${spec.otherCover}`;
-        if (beer.group.userData.tex !== spec.texture || soda.group.userData.tex !== spec.otherTexture || beer.group.userData.pat !== spec.patternArt || beer.group.userData.key !== texKey) {
+        const texKey = `${spec.texture ? 1 : 0}:${spec.otherTexture ? 1 : 0}:${spec.patternArt ? 1 : 0}:${spec.otherPattern ? 1 : 0}:${spec.cover}:${spec.otherCover}`;
+        if (beer.group.userData.tex !== spec.texture || soda.group.userData.tex !== spec.otherTexture || beer.group.userData.pat !== spec.patternArt || soda.group.userData.pat !== spec.otherPattern || beer.group.userData.key !== texKey) {
           beer.group.userData.tex = spec.texture;
           soda.group.userData.tex = spec.otherTexture;
           beer.group.userData.pat = spec.patternArt;
+          soda.group.userData.pat = spec.otherPattern;
           beer.group.userData.key = texKey;
           paint();
         }
         place();
+        fit(false);
         if (spec.spin && !drag.current) angle.current += 0.012;
         cupSpin.rotation.y = angle.current;
         cupSpinRight.rotation.y = angle.current;
