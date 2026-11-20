@@ -394,6 +394,7 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
         camera.fov = onlyCup ? 16 : 22;
 
         if (onlyCup) {
+          cupSpin.updateMatrixWorld(true);
           const box = new THREE.Box3().setFromObject(cupSpin);
           const center = new THREE.Vector3();
           const size = new THREE.Vector3();
@@ -401,9 +402,9 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
           box.getSize(size);
           const fov = (camera.fov * Math.PI) / 180;
           const tan = Math.tan(fov / 2);
-          const margin = 1.25;
-          const dist = Math.max((size.y * margin) / (2 * tan), (size.x * margin) / (2 * tan * camera.aspect));
-          camera.position.set(center.x, center.y, dist);
+          const margin = 1.6;
+          const dist = Math.max((size.y * margin) / (2 * tan), (size.x * margin) / (2 * tan * Math.max(0.5, camera.aspect)));
+          camera.position.set(center.x, center.y, dist * 1.1);
           camera.lookAt(center.x, center.y, 0);
         } else {
           const box = new THREE.Box3().setFromObject(root);
