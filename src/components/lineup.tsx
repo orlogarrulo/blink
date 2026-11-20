@@ -137,7 +137,8 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
           opacity: 1,
         });
         const decal = new THREE.Mesh(geo, decalMat);
-        decal.scale.setScalar(1.004);
+        decal.scale.set(1.004, 0.86, 1.004);
+        decal.position.y = height * 0.02;
         group.add(decal);
         const level = drink === "beer" ? 0.86 : 0.9;
         const pts = [new THREE.Vector2(0.6, 2)];
@@ -150,16 +151,18 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
         const liquid = new THREE.Mesh(
           new THREE.LatheGeometry(pts, 48),
           new THREE.MeshPhysicalMaterial({
-            color: drink === "beer" ? 0xdd7c0d : 0x2a0c08,
-            roughness: 0.06,
-            transmission: drink === "beer" ? 0.55 : 0.35,
-            thickness: height * 0.2,
-            ior: 1.34,
-            attenuationColor: new THREE.Color(drink === "beer" ? 0xc46a08 : 0x120402),
-            attenuationDistance: height * 0.18,
+            color: drink === "beer" ? 0xe8a820 : 0x140806,
+            roughness: 0.04,
+            transmission: 0.35,
+            thickness: height * 0.35,
+            ior: 1.33,
+            attenuationColor: new THREE.Color(drink === "beer" ? 0xd4940a : 0x080201),
+            attenuationDistance: height * 0.12,
             transparent: true,
+            opacity: 0.95,
           }),
         );
+        liquid.visible = false;
         group.add(liquid);
         const headR = Math.max(2, outerR(0.9) - wall - 1);
         const foam = new THREE.Mesh(
@@ -467,18 +470,22 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
           const mat = item.liquid.material as InstanceType<typeof THREE.MeshPhysicalMaterial>;
           if (kind === "beer") {
             mat.color.set(0xe8a820);
-            mat.transmission = 0.62;
+            mat.transmission = 0.35;
             mat.roughness = 0.04;
             mat.attenuationColor.set(0xd4940a);
-            mat.attenuationDistance = 22;
+            mat.attenuationDistance = 18;
+            mat.opacity = 0.95;
+            mat.needsUpdate = true;
             item.liquid.visible = true;
             item.foam.visible = true;
           } else if (kind === "soda") {
             mat.color.set(0x140806);
-            mat.transmission = 0.18;
-            mat.roughness = 0.06;
+            mat.transmission = 0.15;
+            mat.roughness = 0.05;
             mat.attenuationColor.set(0x080201);
-            mat.attenuationDistance = 10;
+            mat.attenuationDistance = 8;
+            mat.opacity = 0.92;
+            mat.needsUpdate = true;
             item.liquid.visible = true;
             item.foam.visible = false;
           } else {
