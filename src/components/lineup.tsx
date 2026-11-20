@@ -310,8 +310,8 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
         const ctx = wrap.getContext("2d");
         if (!ctx) return null;
         ctx.clearRect(0, 0, wrap.width, wrap.height);
-        const lip = 0.14;
-        const span = Math.min(Math.max(0.30, spanCover), 0.76);
+        const lip = 0.18;
+        const span = Math.min(Math.max(0.28, spanCover), 0.70);
         const y = lip * wrap.height;
         const band = span * wrap.height;
         if (motif) {
@@ -349,8 +349,8 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
         next.anisotropy = renderer.capabilities.getMaxAnisotropy();
         next.wrapS = THREE.ClampToEdgeWrapping;
         next.wrapT = THREE.ClampToEdgeWrapping;
-        next.offset.set(0, 0.08);
-        next.repeat.set(1, 0.84);
+        next.offset.set(0, 0.12);
+        next.repeat.set(1, 0.76);
         next.needsUpdate = true;
         return next;
       };
