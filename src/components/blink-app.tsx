@@ -1095,23 +1095,15 @@ export function BlinkApp() {
               </p>
               <p className="text-xs text-muted">Toca para pausar, solta para continuar</p>
               <div className="relative mt-3 h-80 rounded-2xl bg-white">
-                <Lineup
-                  texture={itemTexture}
+                <CupView
+                  texture={wrapPrint(itemTexture, itemPattern, itemPattern ? 0.9 : 0.6) ?? itemTexture}
                   top={item.top}
                   bot={item.bot}
                   heightMm={item.height}
                   cover={itemPattern ? 0.9 : 0.6}
-                  otherTop={item.top}
-                  otherBot={item.bot}
-                  otherHeight={item.height}
-                  otherCover={0.6}
-                  otherTexture={null}
-                  patternArt={itemPattern}
-                  spin={true}
                   body={itemTint}
                   liquid={itemLiquid}
-                  solo="left"
-                  mode={renderMode}
+                  spin={true}
                   className="absolute inset-0 h-full w-full"
                 />
               </div>
