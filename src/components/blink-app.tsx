@@ -749,6 +749,7 @@ export function BlinkApp() {
                     heightMm={cup.height}
                     cover={pattern ? 0.9 : area.h / cup.height}
                     body={cupTint}
+                    liquid={liquid}
                     spin={Boolean(art || pattern) && spin}
                     className="absolute inset-0 h-full w-full"
                   />
@@ -762,6 +763,7 @@ export function BlinkApp() {
                     heightMm={other.height}
                     cover={rightPattern ? 0.9 : otherArea ? otherArea.h / other.height : 0.6}
                     body={right.cupTint}
+                    liquid={rightLiquid}
                     spin={Boolean(rightArt || rightPattern) && spin}
                     className="absolute inset-0 h-full w-full"
                   />
