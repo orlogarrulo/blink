@@ -20,6 +20,7 @@ type Props = {
   otherLiquid?: "none" | "beer" | "soda";
   mode?: "frost" | "clear" | "studio";
   solo?: "left" | "right" | null;
+  hideCups?: boolean;
   className?: string;
   shotsRef?: { current: ((turns: number[]) => HTMLCanvasElement[]) | null };
   onViews?: (shots: HTMLCanvasElement[]) => void;
@@ -27,7 +28,7 @@ type Props = {
 
 const BOTTLE_H = 230;
 
-export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot, otherHeight, otherCover, otherTexture, otherBody = null, patternArt = null, otherPattern = null, spin, body = null, liquid = "none", otherLiquid = "none", mode = "frost", solo = null, className, shotsRef, onViews }: Props) {
+export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot, otherHeight, otherCover, otherTexture, otherBody = null, patternArt = null, otherPattern = null, spin, body = null, liquid = "none", otherLiquid = "none", mode = "frost", solo = null, hideCups = false, className, shotsRef, onViews }: Props) {
   const ref = useRef<HTMLCanvasElement>(null);
   const live = useRef({ texture, top, bot, heightMm, cover, otherTop, otherBot, otherHeight, otherCover, otherTexture, otherBody, patternArt, otherPattern, spin, body, liquid, otherLiquid, mode, solo });
   live.current = { texture, top, bot, heightMm, cover, otherTop, otherBot, otherHeight, otherCover, otherTexture, otherBody, patternArt, otherPattern, spin, body, liquid, otherLiquid, mode, solo };
@@ -525,8 +526,8 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
         const soloMode = spec.solo;
         bottle.visible = !soloMode;
         can.visible = !soloMode;
-        cupSpin.visible = soloMode !== "right";
-        cupSpinRight.visible = soloMode !== "left";
+        cupSpin.visible = !hideCups && soloMode !== "right";
+        cupSpinRight.visible = !hideCups && soloMode !== "left";
         if (soloMode === "left") cupSpin.position.x = 0;
         if (soloMode === "right") cupSpinRight.position.x = 0;
         if (spec.spin && !drag.current) {
