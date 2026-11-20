@@ -35,6 +35,7 @@ export const BOX_CUPS = 400;
 
 export function chargedQty(qty: number, _minimum: number, exactTiers: number[]): number {
   const asked = Math.max(0, Math.floor(qty) || 0);
+  if (asked <= 0) return 0;
   if (exactTiers.includes(asked)) return asked;
   if (asked < BOX_CUPS) return BOX_CUPS;
   return asked;
