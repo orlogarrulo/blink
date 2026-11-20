@@ -88,8 +88,8 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
         const wall = Math.max(0.85, Math.min(topR, botR) * 0.055);
         const outerR = (t: number) => {
           let r = botR + (topR - botR) * t;
-          if (t < 0.05) r *= 0.9 + 0.1 * (t / 0.05);
-          if (t > 0.95) r += Math.sin(((t - 0.95) / 0.05) * Math.PI) * topR * 0.04;
+          if (t < 0.04) r *= 0.92 + 0.08 * (t / 0.04);
+          if (t > 0.97) r += (t - 0.97) / 0.03 * topR * 0.015;
           return Math.max(0.4, r);
         };
         const outer: InstanceType<typeof THREE.Vector2>[] = [];
@@ -115,22 +115,6 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
         mesh.castShadow = true;
         const group = new THREE.Group();
         group.add(mesh);
-        const rim = new THREE.Mesh(
-          new THREE.TorusGeometry(topR * 0.995, Math.max(0.08, topR * 0.005), 6, 64),
-          new THREE.MeshPhysicalMaterial({
-            color: spec.body || 0xffffff,
-            roughness: 0.14,
-            metalness: 0,
-            clearcoat: 0.7,
-            clearcoatRoughness: 0.15,
-            transmission: 0.55,
-            thickness: 0.8,
-            ior: 1.49,
-          }),
-        );
-        rim.rotation.x = Math.PI / 2;
-        rim.position.y = height * 0.995;
-        group.add(rim);
         const foot = new THREE.Mesh(
           new THREE.TorusGeometry(botR * 0.92, Math.max(0.55, botR * 0.04), 12, 64),
           new THREE.MeshStandardMaterial({ color: 0xf7f7f6, roughness: 0.28, metalness: 0.15 }),
