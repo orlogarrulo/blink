@@ -757,6 +757,50 @@ export function BlinkApp() {
                   }}
                 />
               </div>
+              <div className="grid grid-cols-2 gap-2 bg-white px-2 pb-3">
+                <div className="relative h-64 overflow-hidden rounded-2xl border border-line bg-white">
+                  <Lineup
+                    texture={shown}
+                    top={cup.top}
+                    bot={cup.bot}
+                    heightMm={cup.height}
+                    cover={pattern ? 0.9 : area.h / cup.height}
+                    otherTop={other.top}
+                    otherBot={other.bot}
+                    otherHeight={other.height}
+                    otherCover={0.6}
+                    otherTexture={null}
+                    spin={Boolean(art || pattern) && spin}
+                    body={cupTint}
+                    liquid={liquid}
+                    solo="left"
+                    mode={renderMode}
+                    className="absolute inset-0 h-full w-full"
+                  />
+                  <span className="absolute bottom-2 left-2 rounded bg-white/80 px-2 py-0.5 text-xs text-ink">{t.cup1}</span>
+                </div>
+                <div className="relative h-64 overflow-hidden rounded-2xl border border-line bg-white">
+                  <Lineup
+                    texture={otherTexture}
+                    top={other.top}
+                    bot={other.bot}
+                    heightMm={other.height}
+                    cover={rightPattern ? 0.9 : otherArea ? otherArea.h / other.height : 0.6}
+                    otherTop={cup.top}
+                    otherBot={cup.bot}
+                    otherHeight={cup.height}
+                    otherCover={0.6}
+                    otherTexture={null}
+                    spin={Boolean(rightArt || rightPattern) && spin}
+                    body={right.cupTint}
+                    liquid={rightLiquid}
+                    solo="left"
+                    mode={renderMode}
+                    className="absolute inset-0 h-full w-full"
+                  />
+                  <span className="absolute bottom-2 left-2 rounded bg-white/80 px-2 py-0.5 text-xs text-ink">{t.cup2}</span>
+                </div>
+              </div>
               <div className="grid grid-cols-2 items-start gap-2 bg-white px-2 py-3">
                 <div className="min-w-0 rounded-2xl border border-line p-2">
                   <label className="flex flex-col gap-1 text-xs text-muted">
