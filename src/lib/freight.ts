@@ -1,4 +1,4 @@
-// Transporte Aéreo, folha Ekopos (ECO40).
+// Transporte aéreo do ECO40.
 // Caixa: 400 copos, 14,3 kg, 59 × 36,7 × 29,6 cm.
 // Peso taxável = maior entre o peso real, o volumétrico (cm/6000) e 19 kg.
 // Tarifa TAP de referência: 7,50 €/kg. Sobretaxas fixas 50 € (combustível 40 + segurança 10).
@@ -30,6 +30,16 @@ export type AirFreight = {
   kz: number;
   source: "simulacao" | "rangel";
 };
+
+export const BOX_CUPS = 400;
+
+export function chargedQty(qty: number, minimum: number, exactTiers: number[]): number {
+  const asked = Math.max(0, Math.floor(qty) || 0);
+  const min = Math.max(BOX_CUPS, minimum);
+  if (exactTiers.includes(asked)) return asked;
+  if (asked < min) return min;
+  return Math.ceil(asked / BOX_CUPS) * BOX_CUPS;
+}
 
 function factoryEur(qty: number): number {
   if (qty >= 4800) return 0.3336;

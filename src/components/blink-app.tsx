@@ -17,8 +17,8 @@ import {
   type Process,
 } from "@/lib/catalog";
 import { LANGS, detectLang, localeFor, text, type Lang } from "@/lib/copy";
-import { angleSheet, canvasPdf, cmyk, dominantColors, downloadBlob, openPdf, paintLabel, sheetCanvas, tintCanvas, viewsSheet } from "@/lib/print";
-import { airFreight, SHEET_KZ_PER_EUR, cupWeightScale } from "@/lib/freight";
+import { angleSheet, canvasPdf, cmyk, composeArts, dominantColors, downloadBlob, openPdf, paintLabel, sheetCanvas, tintCanvas, viewsSheet } from "@/lib/print";
+import { BOX_CUPS, airFreight, chargedQty, SHEET_KZ_PER_EUR, cupWeightScale } from "@/lib/freight";
 import { dialForMarket, detectMarket, KZ_PER_EUR, pricePair, type Market } from "@/lib/money";
 import { DIALS } from "@/lib/phone";
 import { rasterizeSvg, traceCanvas } from "@/lib/trace";
@@ -65,6 +65,16 @@ function fontCss(id: string) {
 
 function moneyKz(value: number) {
   return `${new Intl.NumberFormat("pt-PT", { maximumFractionDigits: 0 }).format(Math.round(value))} Kz`;
+}
+
+function SheetMoney({ kz }: { kz: number }) {
+  const euro = new Intl.NumberFormat("pt-PT", { style: "currency", currency: "EUR" }).format(kz / SHEET_KZ_PER_EUR);
+  return (
+    <span className="block leading-tight">
+      <span className="block">{euro}</span>
+      <span className="block text-xs text-muted">{moneyKz(kz)}</span>
+    </span>
+  );
 }
 
 const EMPTY: Draft = {
@@ -133,8 +143,9 @@ function sampleById(id: SampleId) {
 export function BlinkApp() {
   const [draft, setDraft] = useState<Draft>(EMPTY);
   const [ready, setReady] = useState(false);
-  const [art, setArt] = useState<HTMLImageElement | null>(null);
-  const [artName, setArtName] = useState("");
+  const [pieces, setPieces] = useState<HTMLImageElement[]>([]);
+  const [artNames, setArtNames] = useState<string[]>([]);
+  const art = useMemo(() => (pieces.length > 0 ? composeArts(pieces) : null), [pieces]);
   const [error, setError] = useState("");
   const [spin, setSpin] = useState(true);
   const [renderMode, setRenderMode] = useState<"frost" | "clear" | "studio">("frost");
@@ -176,13 +187,17 @@ export function BlinkApp() {
   const allowed = processesFor(cup);
   const process = allowed.includes(draft.process) ? draft.process : allowed[0];
   const area = areaFor(cup, process);
-  const priced = priceFor(cup, draft.qty);
-  const delivery = deliveryDate(draft.qty, process);
+  const minimum = Math.min(...cup.prices.map((row) => row.qty));
+  const billed = chargedQty(draft.qty, minimum, cup.prices.map((row) => row.qty));
+  const priced = priceFor(cup, billed);
+  const delivery = deliveryDate(billed, process);
   const deliveryLabel = new Intl.DateTimeFormat(locale, { dateStyle: "long" }).format(delivery);
   const late = draft.eventDate ? delivery > new Date(`${draft.eventDate}T23:59:00`) : false;
   const unitPrice = pricePair(priced.tier.kz, market);
-  const lotPrice = pricePair(priced.tier.kz * draft.qty, market);
-  const air = freightMode(draft.qty) === "aéreo" ? airFreight(draft.qty, cupWeightScale(cup)) : null;
+  const air = freightMode(billed) === "aéreo" ? airFreight(billed, cupWeightScale(cup)) : null;
+  const freightKz = air?.kz ?? 0;
+  const finalUnit = pricePair(priced.tier.kz + freightKz / Math.max(1, billed), market);
+  const finalLot = pricePair(priced.tier.kz * billed + freightKz, market);
   const airMoney = air
     ? `${new Intl.NumberFormat("pt-PT", { style: "currency", currency: "EUR" }).format(air.eur)} · ${new Intl.NumberFormat("pt-PT", { maximumFractionDigits: 0 }).format(Math.round(air.kz))} Kz`
     : "";
@@ -230,6 +245,7 @@ export function BlinkApp() {
         palette,
         inkCount: 2,
         fit: sample.fit,
+        place: sample.id,
       });
     }
     return map;
@@ -291,13 +307,16 @@ export function BlinkApp() {
     patch({ cupId: id, process: nextAllowed.includes(draft.process) ? draft.process : nextAllowed[0] });
   }
 
-  async function onFile(file: File | undefined) {
-    if (!file) return;
+  async function onFiles(list: FileList | null) {
+    if (!list || list.length === 0) return;
     setError("");
     try {
-      const image = await readArt(file);
-      setArt(image);
-      setArtName(file.name);
+      const picked = Array.from(list);
+      const adding = picked.length === 1 && pieces.length > 0 && pieces.length < 3;
+      const files = adding ? picked.slice(0, 3 - pieces.length) : picked.slice(0, 3);
+      const images = await Promise.all(files.map((file) => readArt(file)));
+      setPieces(adding ? [...pieces, ...images] : images);
+      setArtNames(adding ? [...artNames, ...files.map((file) => file.name)] : files.map((file) => file.name));
       setTint(null);
       patch({ sample: null });
     } catch {
@@ -347,6 +366,7 @@ export function BlinkApp() {
       palette: palette.length > 0 ? palette : ["#1A120C"],
       inkCount: 2,
       fit: sample.fit,
+      place: sample.id === "vetor" ? "medida" : sample.id,
     });
     if (tint) printLabel = tintCanvas(printLabel, tint, process);
     const slug = (draft.event || "blink").toLowerCase().replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "") || "blink";
@@ -365,16 +385,16 @@ export function BlinkApp() {
       phone: draft.phone ? `${draft.dial} ${draft.phone}` : "",
       cup,
       process,
-      qty: draft.qty,
+      qty: billed,
       colors: sheetColors.length > 0 ? sheetColors : [{ hex: "#1A120C" }],
       label: printLabel,
       delivery: deliveryLabel,
       eventDate: draft.eventDate,
-      priceLine: `${unitPrice.primary} (${unitPrice.secondary}) / un  ·  ${lotPrice.primary} (${lotPrice.secondary})`,
+      priceLine: `${finalUnit.primary} (${finalUnit.secondary}) / un  ·  ${finalLot.primary} (${finalLot.secondary})`,
       freightNote: quote
         ? `na porta  ·  ${moneyKz(quote.lotKz)}  ·  frete e taxas ${moneyKz(quote.freightKz)}  ·  ${quote.qty} ${quote.cupId}`
         : air
-          ? `aéreo  ·  +${freightDays(draft.qty)} dias  ·  ${airMoney}  ·  câmbio ${SHEET_KZ_PER_EUR}`
+          ? `aéreo  ·  +${freightDays(billed)} dias  ·  ${airMoney}  ·  câmbio ${SHEET_KZ_PER_EUR}`
           : undefined,
     });
     const turns = [0, Math.PI * 0.28, Math.PI * 0.5];
@@ -423,7 +443,7 @@ export function BlinkApp() {
       <section className="mt-6">
         <h2 className="font-display text-2xl">{t.plainTitle}</h2>
         <p className="mt-1 text-sm text-muted">{t.plainLead}</p>
-        <ul className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-5">
+        <ul className="rise-list mt-4 grid grid-cols-2 gap-3 sm:grid-cols-5">
           {CUPS.map((item) => {
             const on = item.id === cup.id;
             const window = areaFor(item, processesFor(item).includes(process) ? process : processesFor(item)[0]);
@@ -432,7 +452,7 @@ export function BlinkApp() {
                 <button
                   type="button"
                   onClick={() => chooseCup(item.id)}
-                  className={`w-full rounded-3xl border bg-card px-2 pb-3 pt-2 text-left ${on ? "border-ink" : "border-line"}`}
+                  className={`w-full rounded-3xl border bg-card px-2 pb-3 pt-2 text-left ${on ? "cup-on border-ink" : "border-line"}`}
                 >
                   <CupView
                     texture={on && chosen ? chosen : null}
@@ -456,16 +476,21 @@ export function BlinkApp() {
         </ul>
       </section>
 
-      <section className="mt-8 grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
+      <div className="mt-8 grid items-start gap-6 lg:grid-cols-[minmax(0,1.25fr)_minmax(22rem,0.82fr)]">
+        <div className="space-y-6">
         <div className="space-y-4">
           <label className="flex min-h-24 cursor-pointer flex-col items-center justify-center rounded-3xl border border-dashed border-line bg-card px-4 text-center">
             <span className="font-medium">{t.upload}</span>
-            <span className="mt-1 text-sm text-muted">{artName || t.uploadHint}</span>
+            <span className="mt-1 text-sm text-muted">{artNames.length > 0 ? artNames.join(" · ") : t.uploadHint}</span>
             <input
               className="sr-only"
               type="file"
+              multiple
               accept="application/pdf,image/png,image/jpeg,image/webp,image/svg+xml"
-              onChange={(event) => void onFile(event.target.files?.[0])}
+              onChange={(event) => {
+                void onFiles(event.target.files);
+                event.target.value = "";
+              }}
             />
           </label>
           {error ? <p className="border-l-4 border-pitanga pl-3 text-sm">{error}</p> : null}
@@ -601,7 +626,103 @@ export function BlinkApp() {
             <p className="text-sm text-muted">{t.waiting}</p>
           )}
         </div>
-
+          {chosen && area ? (
+            <section className="overflow-hidden rounded-3xl border border-line bg-card">
+            <div>
+              <div className="flex h-[32rem] items-end justify-center rounded-2xl bg-white">
+                <CupStage
+                  texture={chosen}
+                  top={cup.top}
+                  bot={cup.bot}
+                  heightMm={cup.height}
+                  cover={area.h / cup.height}
+                  spin={spin}
+                  mode={renderMode}
+                  drink="beer"
+                  body={cupTint}
+                  lean="left"
+                  shotsRef={shotsRef}
+                  className="h-full w-[34%] cursor-pointer"
+                  onViews={(shots) => {
+                    const title = draft.event ? `${cup.name} · ${draft.event}` : cup.name;
+                    openPdf(canvasPdf(viewsSheet(title, t.angles, shots)));
+                  }}
+                />
+                <div className="relative z-10 h-full w-80 shrink-0">
+                  <img
+                    src="/scale-bottle.jpg"
+                    alt={t.drink.beer}
+                    className="absolute w-auto max-w-none object-contain"
+                    style={{ height: "78%", bottom: "26%", left: 0 }}
+                  />
+                  <img
+                    src="/scale-can.jpg"
+                    alt={t.drink.soda}
+                    className="absolute w-auto max-w-none object-contain"
+                    style={{ height: "39%", bottom: "26%", right: 0 }}
+                  />
+                </div>
+                <CupStage
+                  texture={chosen}
+                  top={cup.top}
+                  bot={cup.bot}
+                  heightMm={cup.height}
+                  cover={area.h / cup.height}
+                  spin={spin}
+                  mode={renderMode}
+                  drink="soda"
+                  body={cupTint}
+                  lean="right"
+                  className="h-full w-[34%]"
+                />
+              </div>
+              <p className="bg-white px-3 py-2 text-center text-sm">
+                {cup.name} {cup.height} mm · {t.drink.beer} 230 mm · {t.drink.soda} 115 mm
+                <span className="mt-0.5 block text-xs text-muted">{t.scaleHint}</span>
+              </p>
+              <p className="border-t border-line px-4 py-2 text-xs text-muted">{t.viewHint}</p>
+              <div className="flex flex-wrap items-center gap-2 border-t border-line px-4 py-3">
+                {(["frost", "clear", "studio"] as const).map((id) => (
+                  <button
+                    key={id}
+                    type="button"
+                    aria-pressed={renderMode === id}
+                    onClick={() => setRenderMode(id)}
+                    className={`min-h-11 rounded-full px-4 text-sm ${renderMode === id ? "bg-ink text-paper" : "bg-card"}`}
+                  >
+                    {t.render[id]}
+                  </button>
+                ))}
+              </div>
+              <p className="px-4 pb-3 text-xs text-muted">{t.renderNote[renderMode]}</p>
+              <div className="flex flex-wrap items-center gap-2 border-t border-line px-4 py-3">
+                {(["none", "beer", "soda"] as const).map((id) => (
+                  <button
+                    key={id}
+                    type="button"
+                    aria-pressed={drink === id}
+                    onClick={() => setDrink(id)}
+                    className={`min-h-11 rounded-full px-4 text-sm ${drink === id ? "bg-ink text-paper" : "bg-card"}`}
+                  >
+                    {t.drink[id]}
+                  </button>
+                ))}
+              </div>
+              <p className="px-4 pb-3 text-xs text-muted">{t.drinkNote}</p>
+              <div className="flex items-center justify-between gap-3 border-t border-line px-4 py-3">
+                <p className="text-sm text-muted">
+                  {cup.name} · {t.sample[chosenId as SampleId].name} · {t.process[process]}
+                </p>
+                <button type="button" className="min-h-11 px-3 text-sm" onClick={() => setSpin((value) => !value)}>
+                  {spin ? t.stop : t.spin}
+                </button>
+              </div>
+              <WindowPlate area={area} process={process} canvas={chosen} caption={t} />
+            </div>
+            </section>
+          ) : null}
+        </div>
+        <div className="panel-in space-y-6 lg:sticky lg:top-4">
         <aside className="rounded-3xl border border-line bg-card p-4">
           <h2 className="font-display text-2xl">{t.sheet}</h2>
           <div className="mt-3 space-y-3">
@@ -646,17 +767,49 @@ export function BlinkApp() {
                 <input className={control} type="date" value={draft.eventDate} onChange={(event) => patch({ eventDate: event.target.value })} />
               </Field>
             </div>
-            <p className="text-sm text-muted">
-              {unitPrice.primary} {t.perTier} · {unitPrice.secondary}. {t.estimated} {deliveryLabel}. {t.freight} {freightMode(draft.qty) === "marítimo" ? t.sea : t.air}, {freightDays(draft.qty)} {t.after} {productionDays(process)} {t.working}.
-            </p>
-            {air ? <p className="text-sm text-muted">{airMoney}. {t.airMath}</p> : null}
+            <dl className="divide-y divide-line overflow-hidden rounded-2xl border border-line text-sm">
+              <div className="flex items-baseline justify-between gap-4 bg-paper px-3 py-3">
+                <dt className="text-muted">{t.final}</dt>
+                <dd className="text-right">
+                  <span key={finalUnit.primary} className="final-figure font-display text-2xl leading-none">{finalUnit.primary}</span>
+                  <span className="mt-1 block text-muted">{finalLot.primary} {t.inLot}</span>
+                </dd>
+              </div>
+              <div className="flex items-baseline justify-between gap-4 px-3 py-2.5">
+                <dt className="text-muted">{t.price}</dt>
+                <dd className="text-right">
+                  {unitPrice.primary}
+                  <span className="mt-0.5 block text-muted">{unitPrice.secondary}</span>
+                </dd>
+              </div>
+              <div className="flex items-baseline justify-between gap-4 px-3 py-2.5">
+                <dt className="text-muted">{t.estimated}</dt>
+                <dd>{deliveryLabel}</dd>
+              </div>
+              <div className="flex items-baseline justify-between gap-4 px-3 py-2.5">
+                <dt className="text-muted">{t.production}</dt>
+                <dd>
+                  {productionDays(process)} {t.working}
+                </dd>
+              </div>
+              <div className="flex items-baseline justify-between gap-4 px-3 py-2.5">
+                <dt className="text-muted">{t.freight}</dt>
+                <dd>
+                  {freightMode(billed) === "marítimo" ? t.sea : t.air} · {freightDays(billed)} {t.days}
+                </dd>
+              </div>
+              {air ? (
+                <div className="flex items-baseline justify-between gap-4 px-3 py-2.5">
+                  <dt className="text-muted">{t.fees}</dt>
+                  <dd className="text-right">{airMoney}</dd>
+                </div>
+              ) : null}
+            </dl>
             {late ? <p className="border-l-4 border-pitanga pl-3 text-sm">{t.late}</p> : null}
             {priced.below ? <p className="text-sm text-muted">{t.belowMin}</p> : null}
           </div>
         </aside>
-      </section>
-
-      <section className="mt-8 overflow-hidden rounded-3xl border border-line bg-card">
+      <section className="overflow-hidden rounded-3xl border border-line bg-card">
         <div className="flex flex-wrap items-end justify-between gap-3 px-4 py-4">
           <div>
             <h2 className="font-display text-3xl">{t.simTitle}</h2>
@@ -666,14 +819,14 @@ export function BlinkApp() {
             type="button"
             className="min-h-11 rounded-full bg-ink px-5 text-sm text-paper"
             onClick={() => {
-              const landed = airFreight(draft.qty, cupWeightScale(cup));
-              const freightKz = landed?.kz ?? 0;
+              const landed = airFreight(billed, cupWeightScale(cup));
+              const door = landed?.kz ?? 0;
               setQuote({
                 cupId: cup.id,
-                qty: draft.qty,
+                qty: billed,
                 unitKz: priced.tier.kz,
-                freightKz,
-                lotKz: priced.tier.kz * draft.qty + freightKz,
+                freightKz: door,
+                lotKz: priced.tier.kz * billed + door,
               });
             }}
           >
@@ -687,7 +840,7 @@ export function BlinkApp() {
                 <th className="px-4 py-3 font-medium">{t.qty}</th>
                 <th className="px-4 py-3 font-medium">{cup.name}</th>
                 <th className="px-4 py-3 font-medium">{t.freight}</th>
-                <th className="px-4 py-3 font-medium">{t.door}</th>
+                <th className="px-4 py-3 font-medium">{t.final}</th>
                 <th className="px-4 py-3 font-medium">{t.inLot}</th>
               </tr>
             </thead>
@@ -696,7 +849,7 @@ export function BlinkApp() {
                 const landed = airFreight(tier.qty, cupWeightScale(cup));
                 const freightKz = landed?.kz ?? 0;
                 const lot = tier.kz * tier.qty + freightKz;
-                const on = tier.qty === draft.qty;
+                const on = tier.qty === billed;
                 return (
                   <tr
                     key={tier.qty}
@@ -704,109 +857,57 @@ export function BlinkApp() {
                     onClick={() => patch({ qty: tier.qty })}
                   >
                     <td className="px-4 py-3">{tier.qty.toLocaleString(locale)}</td>
-                    <td className="px-4 py-3">{moneyKz(tier.kz)}</td>
-                    <td className="px-4 py-3">{moneyKz(freightKz)}</td>
-                    <td className="px-4 py-3">{moneyKz(lot / tier.qty)}</td>
-                    <td className="px-4 py-3">{moneyKz(lot)}</td>
+                    <td className="px-4 py-3"><SheetMoney kz={tier.kz} /></td>
+                    <td className="px-4 py-3"><SheetMoney kz={freightKz} /></td>
+                    <td className="px-4 py-3"><SheetMoney kz={lot / tier.qty} /></td>
+                    <td className="px-4 py-3"><SheetMoney kz={lot} /></td>
                   </tr>
                 );
               })}
-              {cup.prices.some((tier) => tier.qty === draft.qty) ? null : (
-                <tr className="border-t border-line bg-paper">
-                  <td className="px-4 py-3">{draft.qty.toLocaleString(locale)}</td>
-                  <td className="px-4 py-3">{moneyKz(priced.tier.kz)}</td>
-                  <td className="px-4 py-3">{moneyKz(airFreight(draft.qty, cupWeightScale(cup))?.kz ?? 0)}</td>
-                  <td className="px-4 py-3">{moneyKz(priced.tier.kz + (airFreight(draft.qty, cupWeightScale(cup))?.kz ?? 0) / Math.max(1, draft.qty))}</td>
-                  <td className="px-4 py-3">{moneyKz(priced.tier.kz * draft.qty + (airFreight(draft.qty, cupWeightScale(cup))?.kz ?? 0))}</td>
-                </tr>
-              )}
+              <tr className="border-t-2 border-ink bg-paper">
+                <td className="px-4 py-3">
+                  <span className="mb-1 block text-xs text-muted">{t.yourQty}</span>
+                  <input
+                    className="min-h-11 w-32 rounded-xl border border-line bg-white px-3"
+                    type="number"
+                    min={1}
+                    inputMode="numeric"
+                    aria-label={t.qty}
+                    value={draft.qty || ""}
+                    onChange={(event) => patch({ qty: Math.max(0, Math.floor(Number(event.target.value) || 0)) })}
+                  />
+                  <span className="mt-1 block text-xs text-muted">
+                    {Math.max(1, Math.ceil(billed / BOX_CUPS))} {t.boxes}
+                    {billed !== draft.qty ? ` · ${t.billedAs} ${billed.toLocaleString(locale)}` : ""}
+                  </span>
+                </td>
+                <td className="px-4 py-3"><SheetMoney kz={priced.tier.kz} /></td>
+                <td className="px-4 py-3"><SheetMoney kz={freightKz} /></td>
+                <td className="px-4 py-3"><SheetMoney kz={priced.tier.kz + freightKz / Math.max(1, billed)} /></td>
+                <td className="px-4 py-3"><SheetMoney kz={priced.tier.kz * billed + freightKz} /></td>
+              </tr>
             </tbody>
           </table>
         </div>
+        <p className="border-t border-line px-4 py-3 text-xs text-muted">{t.boxRule}</p>
         {quote ? (
           <p className="border-t border-line px-4 py-3 text-sm">
             {t.confirmed} {quote.cupId} · {quote.qty.toLocaleString(locale)} · {moneyKz(quote.lotKz)}
           </p>
         ) : null}
       </section>
-
-      {chosen && area ? (
-        <section className="mt-8 overflow-hidden rounded-3xl border border-line bg-card">
-          <div className="grid items-start lg:grid-cols-[minmax(0,1fr)_22rem]">
-            <div>
-              <div className="grid items-start gap-3 bg-paper p-3 lg:grid-cols-[minmax(0,1fr)_18rem]">
-                <CupStage
-                  texture={chosen}
-                  top={cup.top}
-                  bot={cup.bot}
-                  heightMm={cup.height}
-                  cover={area.h / cup.height}
-                  spin={spin}
-                  mode={renderMode}
-                  drink={drink}
-                  body={cupTint}
-                  shotsRef={shotsRef}
-                  className="h-[28rem] w-full cursor-pointer"
-                  onViews={(shots) => {
-                    const title = draft.event ? `${cup.name} · ${draft.event}` : cup.name;
-                    openPdf(canvasPdf(viewsSheet(title, t.angles, shots)));
-                  }}
-                />
-                <div className="grid gap-3">
-                  <img src="/compare-drinks.jpg" alt={t.drinkCompare} className="w-full rounded-2xl" />
-                  <img src="/compare-scale.jpg" alt={t.drinkScale} className="w-full rounded-2xl" />
-                </div>
-              </div>
-              <p className="border-t border-line px-4 py-2 text-xs text-muted">{t.viewHint}</p>
-              <div className="flex flex-wrap items-center gap-2 border-t border-line px-4 py-3">
-                {(["frost", "clear", "studio"] as const).map((id) => (
-                  <button
-                    key={id}
-                    type="button"
-                    aria-pressed={renderMode === id}
-                    onClick={() => setRenderMode(id)}
-                    className={`min-h-11 rounded-full px-4 text-sm ${renderMode === id ? "bg-ink text-paper" : "bg-card"}`}
-                  >
-                    {t.render[id]}
-                  </button>
-                ))}
-              </div>
-              <p className="px-4 pb-3 text-xs text-muted">{t.renderNote[renderMode]}</p>
-              <div className="flex flex-wrap items-center gap-2 border-t border-line px-4 py-3">
-                {(["none", "beer", "soda"] as const).map((id) => (
-                  <button
-                    key={id}
-                    type="button"
-                    aria-pressed={drink === id}
-                    onClick={() => setDrink(id)}
-                    className={`min-h-11 rounded-full px-4 text-sm ${drink === id ? "bg-ink text-paper" : "bg-card"}`}
-                  >
-                    {t.drink[id]}
-                  </button>
-                ))}
-              </div>
-              <p className="px-4 pb-3 text-xs text-muted">{t.drinkNote}</p>
-              <div className="flex items-center justify-between gap-3 border-t border-line px-4 py-3">
-                <p className="text-sm text-muted">
-                  {cup.name} · {t.sample[chosenId as SampleId].name} · {t.process[process]}
-                </p>
-                <button type="button" className="min-h-11 px-3 text-sm" onClick={() => setSpin((value) => !value)}>
-                  {spin ? t.stop : t.spin}
-                </button>
-              </div>
-              <WindowPlate area={area} process={process} canvas={chosen} caption={t} />
-            </div>
-            <div className="space-y-4 border-t border-line p-4 lg:border-l lg:border-t-0">
+          {chosen && area ? (
+            <div className="space-y-4 rounded-3xl border border-line bg-card p-4">
               <h2 className="font-display text-3xl leading-tight">{draft.event || t.unnamed}</h2>
               <p className="text-sm text-muted">
                 {draft.promoter || t.promoter}
                 {draft.email ? ` · ${draft.email}` : ""}
                 {draft.phone ? ` · ${draft.dial} ${draft.phone}` : ""}
-                {` · ${cup.name} · ${t.process[process]} · ${draft.qty.toLocaleString(locale)} ${t.cups}`}
+                {` · ${cup.name} · ${t.process[process]} · ${billed.toLocaleString(locale)} ${t.cups}`}
               </p>
               <p className="text-sm">
-                {unitPrice.primary} {t.perUnit} · {lotPrice.primary} {t.inLot}
-                <span className="text-muted"> · {unitPrice.secondary} {t.perUnit}</span>
+                {finalUnit.primary} {t.perUnit} · {finalLot.primary} {t.inLot}
+                <span className="text-muted"> · {t.final}</span>
               </p>
               <ul className="flex flex-wrap gap-3">
                 {colors.map((hex) => (
@@ -822,9 +923,9 @@ export function BlinkApp() {
               </button>
               <p className="text-xs leading-relaxed text-muted">{t.estimate} {KZ_PER_EUR} Kz.</p>
             </div>
-          </div>
-        </section>
-      ) : null}
+          ) : null}
+        </div>
+      </div>
     </main>
   );
 }
@@ -835,9 +936,9 @@ function BlinkLogo({ slogan }: { slogan: string }) {
       <svg viewBox="0 0 48 48" className="h-12 w-12" aria-hidden>
         <rect width="48" height="48" rx="12" fill="var(--color-ink)" />
         <rect x="13" y="12" width="22" height="3.2" rx="1.4" fill="var(--color-paper)" />
-        <path d="M14.5 16.2h19l-1.4 6.2H16z" fill="var(--color-urucum)" />
-        <path d="M16.2 23.2h15.6l-1.5 8.2H17.8z" fill="var(--color-ipe)" />
-        <path d="M18 32.2h12l-1.3 5.2h-9.4z" fill="var(--color-pitanga)" />
+        <path d="M14.5 16.2h19l-1.4 6.2H16z" fill="var(--color-urucum)" className="blink-band" />
+        <path d="M16.2 23.2h15.6l-1.5 8.2H17.8z" fill="var(--color-ipe)" className="blink-band" />
+        <path d="M18 32.2h12l-1.3 5.2h-9.4z" fill="var(--color-pitanga)" className="blink-band" />
       </svg>
       <div>
         <p className="font-display text-4xl leading-none tracking-tight">BLINK</p>

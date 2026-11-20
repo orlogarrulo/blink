@@ -47,6 +47,43 @@ export function quantize(canvas: HTMLCanvasElement, palette: string[]) {
   ctx.putImageData(frame, 0, 0);
 }
 
+function sourceSize(source: CanvasImageSource): [number, number] {
+  if (source instanceof HTMLImageElement) return [source.naturalWidth || source.width, source.naturalHeight || source.height];
+  if (source instanceof HTMLCanvasElement) return [source.width, source.height];
+  if (source instanceof SVGImageElement) return [source.width.baseVal.value, source.height.baseVal.value];
+  return [1, 1];
+}
+
+function drawFit(ctx: CanvasRenderingContext2D, source: CanvasImageSource, cx: number, cy: number, max: number) {
+  const [iw, ih] = sourceSize(source);
+  const scale = max / Math.max(iw, ih);
+  const dw = iw * scale;
+  const dh = ih * scale;
+  ctx.drawImage(source, cx - dw / 2, cy - dh / 2, dw, dh);
+}
+
+export function composeArts(images: CanvasImageSource[]): HTMLCanvasElement {
+  const canvas = document.createElement("canvas");
+  canvas.width = 1600;
+  canvas.height = 1600;
+  const ctx = canvas.getContext("2d");
+  if (!ctx || images.length === 0) return canvas;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const [logo, pattern, extra] = images;
+  if (pattern) {
+    const tile = 320;
+    ctx.save();
+    ctx.globalAlpha = 0.34;
+    for (let y = 0; y < canvas.height; y += tile) {
+      for (let x = 0; x < canvas.width; x += tile) ctx.drawImage(pattern, x + 8, y + 8, tile - 16, tile - 16);
+    }
+    ctx.restore();
+  }
+  if (logo) drawFit(ctx, logo, 800, pattern || extra ? 720 : 800, pattern || extra ? 980 : 1280);
+  if (extra) drawFit(ctx, extra, 800, 1280, 380);
+  return canvas;
+}
+
 export function paintLabel(options: {
   area: Area;
   ppm: number;
@@ -61,6 +98,7 @@ export function paintLabel(options: {
   palette: string[];
   inkCount: 1 | 2;
   fit?: "contain" | "cover" | "band" | "height";
+  place?: "medida" | "cheio" | "margem" | "faixa" | "alto" | "chapado";
 }): HTMLCanvasElement {
   const { area, ppm } = options;
   const canvas = document.createElement("canvas");
@@ -74,40 +112,133 @@ export function paintLabel(options: {
   } else {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
   }
+  const title = options.title.trim();
+  const place = options.place ?? "medida";
+  const tune = {
+    medida: { reserve: 0.26, gap: 0.04, weight: 0.42, lines: 2, stack: false },
+    cheio: { reserve: 0.44, gap: 0.02, weight: 0.72, lines: 2, stack: false },
+    margem: { reserve: 0.18, gap: 0.09, weight: 0.3, lines: 2, stack: false },
+    faixa: { reserve: 0.16, gap: 0.03, weight: 0.82, lines: 1, stack: false },
+    alto: { reserve: 0.64, gap: 0.02, weight: 0.16, lines: 8, stack: true },
+    chapado: { reserve: 0.36, gap: 0.04, weight: 0.58, lines: 3, stack: false },
+  }[place];
+  const reserve = title && options.image ? Math.round(canvas.height * tune.reserve) : 0;
+  const gap = Math.round(canvas.height * (title && options.image ? tune.gap : 0.05));
   if (options.image) {
     const source = options.image as HTMLImageElement;
     const iw = source.naturalWidth || source.width || canvas.width;
     const ih = source.naturalHeight || source.height || canvas.height;
     const fit = options.fit ?? "contain";
-    let placed = Math.min(canvas.width / iw, canvas.height / ih);
-    if (fit === "cover") placed = Math.max(canvas.width / iw, canvas.height / ih);
-    if (fit === "height") placed = canvas.height / ih;
-    if (fit === "band") placed = Math.min(canvas.width / iw, (canvas.height * 0.46) / ih);
+    const limitW = canvas.width * (place === "margem" ? 0.7 : 0.88);
+    const limitH = Math.max(8, canvas.height - reserve - gap * 2);
+    let placed = Math.min(limitW / iw, limitH / ih);
+    if (fit === "cover") placed = Math.max(limitW / iw, limitH / ih);
+    if (fit === "height") placed = limitH / ih;
+    if (fit === "band") placed = Math.min(limitW / iw, (limitH * 0.62) / ih);
     placed *= options.scale;
     const dw = iw * placed;
     const dh = ih * placed;
-    ctx.drawImage(source, (canvas.width - dw) / 2, (canvas.height - dh) / 2 + options.shift, dw, dh);
+    const y = gap + (limitH - dh) / 2 + options.shift;
+    ctx.drawImage(source, (canvas.width - dw) / 2, y, dw, dh);
   }
-  if (options.title.trim()) {
-    drawPhrase(ctx, options.title.trim(), options.font || "Outfit, sans-serif", options.ink, !options.image);
+  if (title) {
+    const alone = !options.image;
+    drawPhrase(ctx, title, options.font || "Outfit, sans-serif", options.ink, {
+      x: canvas.width * (place === "margem" && alone ? 0.14 : 0.06),
+      y: alone ? 0 : canvas.height - reserve,
+      w: canvas.width * (place === "margem" && alone ? 0.72 : 0.88),
+      h: alone ? canvas.height : reserve,
+      weight: alone ? (place === "cheio" || place === "chapado" ? 0.34 : place === "margem" ? 0.12 : place === "faixa" ? 0.16 : place === "alto" ? 0.2 : 0.2) : tune.weight,
+      lines: alone && place === "alto" ? 8 : alone && place === "faixa" ? 1 : alone && place === "cheio" ? 2 : tune.lines,
+      stack: place === "alto",
+    });
   }
   if (options.suggest) {
     const inks = options.process === "serigrafia" ? options.palette.slice(0, options.inkCount) : options.palette.slice(0, 4);
     quantize(canvas, inks);
   }
+  isolateInk(canvas);
   return canvas;
 }
 
-function drawPhrase(ctx: CanvasRenderingContext2D, text: string, font: string, ink: string, alone: boolean) {
-  const canvas = ctx.canvas;
-  const maxW = canvas.width * 0.88;
-  let size = Math.round(canvas.height * (alone ? 0.22 : 0.16));
+function isolateInk(canvas: HTMLCanvasElement) {
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) return;
+  const frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const data = frame.data;
+  const w = canvas.width;
+  const h = canvas.height;
+  const seen = new Uint8Array(w * h);
+  const stack: number[] = [];
+  const paperAt = (i: number) => {
+    if (data[i + 3] < 16) return true;
+    const light = (data[i] + data[i + 1] + data[i + 2]) / 3;
+    const chroma = Math.max(data[i], data[i + 1], data[i + 2]) - Math.min(data[i], data[i + 1], data[i + 2]);
+    return light > 238 && chroma < 18;
+  };
+  for (let x = 0; x < w; x += 1) {
+    stack.push(x, (h - 1) * w + x);
+  }
+  for (let y = 0; y < h; y += 1) stack.push(y * w, y * w + w - 1);
+  while (stack.length > 0) {
+    const p = stack.pop();
+    if (p === undefined || seen[p]) continue;
+    seen[p] = 1;
+    const i = p * 4;
+    if (!paperAt(i)) continue;
+    data[i + 3] = 0;
+    const x = p % w;
+    const y = (p / w) | 0;
+    if (x > 0) stack.push(p - 1);
+    if (x + 1 < w) stack.push(p + 1);
+    if (y > 0) stack.push(p - w);
+    if (y + 1 < h) stack.push(p + w);
+  }
+  let ink = 0;
+  let lightInk = 0;
+  for (let i = 0; i < data.length; i += 4) {
+    if (data[i + 3] < 16) continue;
+    ink += 1;
+    if ((data[i] + data[i + 1] + data[i + 2]) / 3 > 210) lightInk += 1;
+  }
+  ctx.putImageData(frame, 0, 0);
+  if (ink > 12 && lightInk / ink > 0.6) {
+    const halo = document.createElement("canvas");
+    halo.width = w;
+    halo.height = h;
+    const pen = halo.getContext("2d");
+    if (!pen) return;
+    pen.drawImage(canvas, 0, 0);
+    pen.globalCompositeOperation = "source-in";
+    pen.fillStyle = "#6e6a66";
+    pen.fillRect(0, 0, w, h);
+    ctx.save();
+    ctx.globalCompositeOperation = "destination-over";
+    const spread = Math.max(2, Math.round(w * 0.012));
+    ctx.drawImage(halo, -spread, 0);
+    ctx.drawImage(halo, spread, 0);
+    ctx.drawImage(halo, 0, -spread);
+    ctx.drawImage(halo, 0, spread);
+    ctx.restore();
+  }
+}
+
+function drawPhrase(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  font: string,
+  ink: string,
+  box: { x: number; y: number; w: number; h: number; weight: number; lines: number; stack: boolean },
+) {
   ctx.fillStyle = ink;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
+  const words = box.stack ? text.split(/\s+/).filter(Boolean) : text.split(/\s+/);
+  const maxW = box.w;
+  let size = Math.round(box.h * box.weight);
   const linesFor = (px: number) => {
     ctx.font = `600 ${px}px ${font}`;
-    const words = text.split(/\s+/);
+    if (box.stack) return words;
     const lines: string[] = [];
     let line = "";
     for (const word of words) {
@@ -123,13 +254,24 @@ function drawPhrase(ctx: CanvasRenderingContext2D, text: string, font: string, i
     return lines;
   };
   let lines = linesFor(size);
-  while (size > 18 && (lines.length > 3 || lines.some((line) => ctx.measureText(line).width > maxW))) {
+  const cap = Math.max(1, box.lines);
+  const fits = (px: number, rows: string[]) => {
+    ctx.font = `600 ${px}px ${font}`;
+    const lineGap = px * (box.stack ? 1.12 : 1.2);
+    const block = Math.max(px, (rows.length - 1) * lineGap + px);
+    const wide = rows.some((line) => ctx.measureText(line).width > maxW);
+    return { ok: rows.length <= cap && !wide && block <= box.h * 0.88, lineGap, block };
+  };
+  let laid = fits(size, lines);
+  while (size > 12 && !laid.ok) {
     size -= 2;
     lines = linesFor(size);
+    laid = fits(size, lines);
   }
-  const gap = size * 1.05;
-  const y0 = (alone ? canvas.height * 0.5 : canvas.height * 0.8) - ((lines.length - 1) * gap) / 2;
-  lines.forEach((line, index) => ctx.fillText(line, canvas.width / 2, y0 + index * gap));
+  ctx.font = `600 ${size}px ${font}`;
+  ctx.textBaseline = "top";
+  const top = box.y + Math.max(0, (box.h - laid.block) / 2);
+  lines.forEach((line, index) => ctx.fillText(line, box.x + box.w / 2, top + index * laid.lineGap));
 }
 
 export function dominantColors(source: HTMLCanvasElement, count: number): string[] {
@@ -180,18 +322,14 @@ export function tintCanvas(source: HTMLCanvasElement, hex: string, process: Proc
     const r = data[i];
     const g = data[i + 1];
     const b = data[i + 2];
-    if (r > 244 && g > 244 && b > 244) continue;
     const ink = 1 - (r + g + b) / (255 * 3);
-    if (process === "serigrafia") {
-      data[i] = tr;
-      data[i + 1] = tg;
-      data[i + 2] = tb;
-      data[i + 3] = Math.round(alpha * Math.min(1, ink * 1.4));
-    } else {
-      data[i] = Math.round(255 * (1 - ink) + tr * ink);
-      data[i + 1] = Math.round(255 * (1 - ink) + tg * ink);
-      data[i + 2] = Math.round(255 * (1 - ink) + tb * ink);
-    }
+    const target = (tr + tg + tb) / 3;
+    data[i] = tr;
+    data[i + 1] = tg;
+    data[i + 2] = tb;
+    if (target > 236) data[i + 3] = alpha;
+    else if (process === "serigrafia") data[i + 3] = Math.round(alpha * Math.min(1, Math.max(ink, 0.35) * 1.2));
+    else data[i + 3] = alpha;
   }
   ctx.putImageData(frame, 0, 0);
   return canvas;
@@ -303,7 +441,7 @@ export function sheetCanvas(options: {
     "IML: 300 dpi, CMYK, textos em contorno, base branca. Fora da janela: 2 mm acima e abaixo e 4 mm extra no topo.",
     "Serigrafia: vetor, Pantone Solid Coated, sem gradiente. Linha mínima 0,35 mm (1 tinta) ou 0,60 mm (2 tintas).",
     "Digital: só ECO28, ECO30 e ECO60, a 300 dpi CMYK. O polipropileno fica translúcido onde não há tinta.",
-    "Prazo é estimativa de estúdio: 8 dias úteis (serigrafia e digital) ou 20 (IML), mais frete da folha Ekopos.",
+    "Prazo é estimativa de estúdio: 8 dias úteis (serigrafia e digital) ou 20 (IML), mais o frete.",
   ];
   notes.forEach((line, index) => ctx.fillText(line, 72, 1520 + index * 32));
   return canvas;
@@ -315,33 +453,32 @@ export function angleSheet(rows: { name: string; labels: readonly string[]; shot
   canvas.height = 1754;
   const ctx = canvas.getContext("2d");
   if (!ctx) return canvas;
-  ctx.fillStyle = "#F6F0E6";
+  ctx.fillStyle = "#F3F1EE";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.fillStyle = "#1A120C";
-  ctx.font = "600 42px Fraunces, serif";
-  ctx.fillText("Vistas do copo", 56, 78);
+  ctx.font = "600 28px Fraunces, serif";
+  ctx.fillText("Estúdio", 48, 52);
   rows.slice(0, 2).forEach((row, rowIndex) => {
-    const top = 120 + rowIndex * 800;
-    ctx.fillStyle = "#1A120C";
-    ctx.font = "600 28px Outfit, sans-serif";
-    ctx.fillText(row.name, 56, top + 28);
-    const gap = 24;
-    const cellW = (1240 - 112 - gap * 2) / 3;
-    const cellH = 700;
+    const top = 78 + rowIndex * 830;
+    ctx.fillStyle = "#6d6258";
+    ctx.font = "500 16px Outfit, sans-serif";
+    ctx.fillText(row.name, 48, top + 8);
+    const gap = 16;
+    const cellW = (1240 - 96 - gap * 2) / 3;
+    const cellH = 760;
     row.shots.slice(0, 3).forEach((shot, index) => {
-      const x = 56 + index * (cellW + gap);
-      const y = top + 48;
-      ctx.fillStyle = "#FFFFFF";
-      roundRect(ctx, x, y, cellW, cellH, 16);
-      ctx.fill();
-      const boxH = cellH - 48;
-      const scale = Math.min((cellW - 16) / shot.width, (boxH - 8) / shot.height);
+      const x = 48 + index * (cellW + gap);
+      const y = top + 22;
+      const photoH = cellH - 36;
+      ctx.fillStyle = "#f7f6f4";
+      ctx.fillRect(x, y, cellW, photoH);
+      const scale = Math.min(cellW / shot.width, photoH / shot.height);
       const dw = shot.width * scale;
       const dh = shot.height * scale;
-      ctx.drawImage(shot, x + (cellW - dw) / 2, y + 8 + (boxH - dh) / 2, dw, dh);
+      ctx.drawImage(shot, x + (cellW - dw) / 2, y + (photoH - dh) / 2, dw, dh);
       ctx.fillStyle = "#1A120C";
-      ctx.font = "500 20px Outfit, sans-serif";
-      ctx.fillText(row.labels[index] || "", x + 16, y + cellH - 16);
+      ctx.font = "500 15px Outfit, sans-serif";
+      ctx.fillText(row.labels[index] || "", x, y + photoH + 22);
     });
   });
   return canvas;
@@ -353,34 +490,33 @@ export function viewsSheet(title: string, labels: readonly string[], shots: HTML
   canvas.height = 1754;
   const ctx = canvas.getContext("2d");
   if (!ctx) return canvas;
-  ctx.fillStyle = "#F6F0E6";
+  ctx.fillStyle = "#F3F1EE";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.fillStyle = "#1A120C";
-  ctx.font = "650 40px Fraunces, serif";
-  ctx.fillText(title, 48, 72);
-  const gap = 24;
+  ctx.font = "600 28px Fraunces, serif";
+  ctx.fillText(title, 40, 48);
+  const gap = 18;
   const left = 40;
-  const top = 104;
+  const top = 72;
   const cols = 2;
   const rows = 3;
   const cellW = (canvas.width - left * 2 - gap) / cols;
-  const cellH = (canvas.height - top - 36 - gap * (rows - 1)) / rows;
+  const cellH = (canvas.height - top - 24 - gap * (rows - 1)) / rows;
   shots.slice(0, 6).forEach((shot, index) => {
     const col = index % cols;
     const row = Math.floor(index / cols);
     const x = left + col * (cellW + gap);
     const y = top + row * (cellH + gap);
-    ctx.fillStyle = "#FFFFFF";
-    roundRect(ctx, x, y, cellW, cellH, 18);
-    ctx.fill();
-    const boxH = cellH - 48;
-    const scale = Math.min((cellW - 16) / shot.width, (boxH - 8) / shot.height);
+    const photoH = cellH - 28;
+    ctx.fillStyle = "#f7f6f4";
+    ctx.fillRect(x, y, cellW, photoH);
+    const scale = Math.min(cellW / shot.width, photoH / shot.height);
     const dw = shot.width * scale;
     const dh = shot.height * scale;
-    ctx.drawImage(shot, x + (cellW - dw) / 2, y + 8 + (boxH - dh) / 2, dw, dh);
+    ctx.drawImage(shot, x + (cellW - dw) / 2, y + (photoH - dh) / 2, dw, dh);
     ctx.fillStyle = "#1A120C";
-    ctx.font = "500 22px Outfit, sans-serif";
-    ctx.fillText(labels[index] || "", x + 16, y + cellH - 16);
+    ctx.font = "500 16px Outfit, sans-serif";
+    ctx.fillText(labels[index] || "", x, y + photoH + 20);
   });
   return canvas;
 }

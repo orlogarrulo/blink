@@ -24,7 +24,7 @@ const tier = (rows: [number, number][]): PriceTier[] => rows.map(([qty, kz]) => 
 
 /**
  * Print windows are width-around × height, from Instruções de impressão v12-2025.
- * Capacities are from the 2025 PT catalogue. Prices are the Ekopos IML client table (Kz).
+ * Capacities are from the 2025 PT catalogue. Prices are the IML client table (Kz).
  * Body sizes are the manufacturer figures (height, top Ø, bottom Ø). ECO20 is not on the public spec page.
  */
 export const CUPS: Cup[] = [

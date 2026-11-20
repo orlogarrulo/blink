@@ -135,11 +135,11 @@ function drawCup(
       ctx.closePath();
       const frost = ctx.createLinearGradient(cx - topR, 0, cx + topR, 0);
       const milk = spec.body ? mixWhite(spec.body) : null;
-      frost.addColorStop(0, milk ? milk(0.55) : "#eef2f4");
-      frost.addColorStop(0.16, milk ? milk(0.82) : "#ffffff");
-      frost.addColorStop(0.48, milk ? milk(0.7) : "#fbfcfd");
-      frost.addColorStop(0.78, milk ? milk(0.48) : "#f4f7f8");
-      frost.addColorStop(1, milk ? milk(0.28) : "#e3e9ed");
+      frost.addColorStop(0, milk ? milk(0.72) : "#f7f7f6");
+      frost.addColorStop(0.16, milk ? milk(0.94) : "#ffffff");
+      frost.addColorStop(0.48, milk ? milk(0.86) : "#fbfbfb");
+      frost.addColorStop(0.78, milk ? milk(0.7) : "#f4f4f3");
+      frost.addColorStop(1, milk ? milk(0.5) : "#ececeb");
       ctx.fillStyle = frost;
       ctx.fill();
       ctx.save();
@@ -151,6 +151,23 @@ function drawCup(
       vert.addColorStop(1, "rgba(206,214,220,0.28)");
       ctx.fillStyle = vert;
       ctx.fillRect(cx - topR - 2, topCy, topR * 2 + 4, bodyH);
+      ctx.restore();
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(cx - topR, topCy);
+      ctx.lineTo(cx + topR, topCy);
+      ctx.lineTo(cx + botR, topCy + bodyH);
+      ctx.lineTo(cx - botR, topCy + bodyH);
+      ctx.closePath();
+      ctx.clip();
+      const sheen = ctx.createLinearGradient(cx - topR, 0, cx + topR, 0);
+      sheen.addColorStop(0, "rgba(255,255,255,0)");
+      sheen.addColorStop(0.16, "rgba(255,255,255,0.22)");
+      sheen.addColorStop(0.28, "rgba(255,255,255,0)");
+      sheen.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.fillStyle = sheen;
+      ctx.fillRect(cx - topR, topCy, topR * 2, bodyH);
       ctx.restore();
 
       if (spec.texture) {
@@ -193,29 +210,13 @@ function drawCup(
           const left = Math.min(x0t, x1t, x0b, x1b);
           const right = Math.max(x0t, x1t, x0b, x1b);
           const side = Math.abs(Math.sin(mid));
-          ctx.globalAlpha = 1 - side * side * 0.12;
+          ctx.globalAlpha = 1 - side * side * 0.04;
+          ctx.globalCompositeOperation = "source-over";
           ctx.drawImage(spec.texture, sx, 0, sw, spec.texture.height, left - 0.6, y0, Math.max(1.2, right - left + 1.2), y1 - y0);
           ctx.restore();
         }
         ctx.restore();
       }
-
-      ctx.save();
-      ctx.beginPath();
-      ctx.moveTo(cx - topR, topCy);
-      ctx.lineTo(cx + topR, topCy);
-      ctx.lineTo(cx + botR, topCy + bodyH);
-      ctx.lineTo(cx - botR, topCy + bodyH);
-      ctx.closePath();
-      ctx.clip();
-      const sheen = ctx.createLinearGradient(cx - topR, 0, cx + topR, 0);
-      sheen.addColorStop(0, "rgba(255,255,255,0)");
-      sheen.addColorStop(0.14, "rgba(255,255,255,0.55)");
-      sheen.addColorStop(0.34, "rgba(255,255,255,0)");
-      sheen.addColorStop(1, "rgba(255,255,255,0)");
-      ctx.fillStyle = sheen;
-      ctx.fillRect(cx - topR, topCy, topR * 2, bodyH);
-      ctx.restore();
 
       ctx.beginPath();
       ctx.ellipse(cx, topCy + 0.4, topR * 0.9, ry * 0.72, 0, 0, Math.PI * 2);
