@@ -35,8 +35,8 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
   onViewsRef.current = onViews;
   const shotsHolder = useRef(shotsRef);
   shotsHolder.current = shotsRef;
-  const angleLeft = useRef(0);
-  const angleRight = useRef(0);
+  const angleLeft = useRef(Math.PI / 3);
+  const angleRight = useRef(Math.PI / 3);
   const pausedLeft = useRef(false);
   const pausedRight = useRef(false);
   const drag = useRef<{ x: number; y: number; a: number; side: "left" | "right" | null } | null>(null);
