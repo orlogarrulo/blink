@@ -137,8 +137,7 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
           opacity: 1,
         });
         const decal = new THREE.Mesh(geo, decalMat);
-        decal.scale.set(1.004, 0.86, 1.004);
-        decal.position.y = height * 0.02;
+        decal.scale.setScalar(1.004);
         group.add(decal);
         const level = drink === "beer" ? 0.86 : 0.9;
         const pts = [new THREE.Vector2(0.6, 2)];
@@ -325,7 +324,10 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
         const next = new THREE.CanvasTexture(wrap);
         next.colorSpace = THREE.SRGBColorSpace;
         next.anisotropy = renderer.capabilities.getMaxAnisotropy();
-        next.wrapS = THREE.RepeatWrapping;
+        next.wrapS = THREE.ClampToEdgeWrapping;
+        next.wrapT = THREE.ClampToEdgeWrapping;
+        next.offset.set(0, 0.08);
+        next.repeat.set(1, 0.84);
         next.needsUpdate = true;
         return next;
       };
