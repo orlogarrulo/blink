@@ -417,6 +417,81 @@ export function BlinkApp() {
   const otherTexture = rightOwn ? rightShown : (rightLabels && right.sample ? rightLabels[right.sample] ?? null : null);
   const colors = chosen ? dominantColors(chosen, 3) : [];
 
+  async function generateMockups(opts: { logo: HTMLCanvasElement | null; bodyColor: string | null; liquid: "none" | "beer" | "soda"; top: number; bot: number; height: number }): Promise<HTMLCanvasElement[]> {
+    const angles = [0, 0.28, 0.5];
+    return angles.map((angle) => {
+      const c = document.createElement("canvas");
+      c.width = 600;
+      c.height = 900;
+      const ctx = c.getContext("2d");
+      if (!ctx) return c;
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, 600, 900);
+      // Cup proportions from selected size
+      const scale = Math.min(420 / opts.height, 280 / opts.top);
+      const cupH = opts.height * scale;
+      const topR = opts.top * scale * 0.5;
+      const botR = opts.bot * scale * 0.5;
+      const cx = 300;
+      const topY = (900 - cupH) / 2;
+      const botY = topY + cupH;
+      // Body color or transparent
+      const bodyFill = opts.bodyColor || "rgba(255,255,255,0.15)";
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(cx - topR, topY);
+      ctx.lineTo(cx + topR, topY);
+      ctx.lineTo(cx + botR, botY);
+      ctx.lineTo(cx - botR, botY);
+      ctx.closePath();
+      ctx.fillStyle = bodyFill;
+      ctx.fill();
+      ctx.strokeStyle = "rgba(0,0,0,0.08)";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.restore();
+      // Liquid if beer/soda
+      if (opts.liquid !== "none") {
+        const liqTop = topY + cupH * (opts.liquid === "beer" ? 0.18 : 0.12);
+        const liqColor = opts.liquid === "beer" ? "rgba(232,168,32,0.75)" : "rgba(20,8,6,0.85)";
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(cx - topR * 0.92, liqTop);
+        ctx.lineTo(cx + topR * 0.92, liqTop);
+        ctx.lineTo(cx + botR * 0.95, botY - 4);
+        ctx.lineTo(cx - botR * 0.95, botY - 4);
+        ctx.closePath();
+        ctx.fillStyle = liqColor;
+        ctx.fill();
+        ctx.restore();
+        if (opts.liquid === "beer") {
+          ctx.fillStyle = "rgba(255,247,238,0.9)";
+          ctx.beginPath();
+          ctx.ellipse(cx, liqTop, topR * 0.85, 8, 0, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      // Logo
+      if (opts.logo) {
+        const logoW = topR * 1.4;
+        const logoH = logoW * (opts.logo.height / Math.max(1, opts.logo.width));
+        const logoX = cx - logoW / 2 + Math.sin(angle) * topR * 0.15;
+        const logoY = topY + cupH * 0.32;
+        ctx.save();
+        ctx.globalAlpha = 0.95;
+        ctx.drawImage(opts.logo, logoX, logoY, logoW, logoH);
+        ctx.restore();
+      }
+      // Rim highlight
+      ctx.strokeStyle = "rgba(255,255,255,0.6)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.ellipse(cx, topY, topR, 6, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      return c;
+    });
+  }
+
   async function exportCard(side: "beer" | "soda") {
     const item = side === "beer" ? cup : other;
     const itemArea = side === "beer" ? area : otherArea;
@@ -487,20 +562,16 @@ export function BlinkApp() {
       priceLine: `${unitMoney.primary} (${unitMoney.secondary}) / un  ·  ${lotMoney.primary} (${lotMoney.secondary})`,
       freightNote: `aéreo  ·  ${numbers.charge} ${item.name}`,
     });
-    const turns = [0, Math.PI * 0.28, Math.PI * 0.5];
-    const solid = shotsRef.current?.(turns, side) ?? [];
-    const fallback = cupStills(
-      {
-        texture: wrapPrint(texture, motif, motif ? 0.9 : itemArea.h / item.height) ?? texture,
-        top: item.top,
-        bot: item.bot,
-        heightMm: item.height,
-        cover: motif ? 0.9 : itemArea.h / item.height,
-        body,
-      },
-      turns,
-    );
-    const views = viewsSheet(item.name, t.angles.slice(0, 3), solid.length === 3 ? solid : fallback);
+    // Generate mockups from the selected filters (logo, color, beer/soda)
+    const mockups = await generateMockups({
+      logo: printLabel,
+      bodyColor: body,
+      liquid: side === "beer" ? liquid : rightLiquid,
+      top: item.top,
+      bot: item.bot,
+      height: item.height,
+    });
+    const views = viewsSheet(item.name, t.angles.slice(0, 3), mockups);
     return [sheet, views];
   }
 
