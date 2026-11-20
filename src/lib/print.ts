@@ -542,29 +542,24 @@ export function viewsSheet(title: string, labels: readonly string[], shots: HTML
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.fillStyle = "#1A120C";
   ctx.font = "600 28px Fraunces, serif";
-  ctx.fillText(title, 40, 48);
+  ctx.fillText(title, 48, 64);
+  const frames = shots.slice(0, 3);
   const gap = 18;
   const left = 40;
-  const top = 72;
-  const cols = 2;
-  const rows = 3;
-  const cellW = (canvas.width - left * 2 - gap) / cols;
-  const cellH = (canvas.height - top - 24 - gap * (rows - 1)) / rows;
-  shots.slice(0, 6).forEach((shot, index) => {
-    const col = index % cols;
-    const row = Math.floor(index / cols);
-    const x = left + col * (cellW + gap);
-    const y = top + row * (cellH + gap);
-    const photoH = cellH - 28;
-    ctx.fillStyle = "#f7f6f4";
-    ctx.fillRect(x, y, cellW, photoH);
+  const top = 96;
+  const cellW = (canvas.width - left * 2 - gap * Math.max(0, frames.length - 1)) / Math.max(1, frames.length);
+  const photoH = canvas.height - top - 72;
+  frames.forEach((shot, index) => {
+    const x = left + index * (cellW + gap);
+    ctx.fillStyle = "#f6f3ee";
+    ctx.fillRect(x, top, cellW, photoH);
     const scale = Math.min(cellW / shot.width, photoH / shot.height);
     const dw = shot.width * scale;
     const dh = shot.height * scale;
-    ctx.drawImage(shot, x + (cellW - dw) / 2, y + (photoH - dh) / 2, dw, dh);
+    ctx.drawImage(shot, x + (cellW - dw) / 2, top + (photoH - dh) / 2, dw, dh);
     ctx.fillStyle = "#1A120C";
     ctx.font = "500 16px Outfit, sans-serif";
-    ctx.fillText(labels[index] || "", x, y + photoH + 20);
+    ctx.fillText(labels[index] || "", x, top + photoH + 28);
   });
   return canvas;
 }

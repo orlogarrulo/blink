@@ -17,7 +17,7 @@ import {
   type Process,
 } from "@/lib/catalog";
 import { LANGS, detectLang, localeFor, text, type Lang } from "@/lib/copy";
-import { angleSheet, canvasPdf, cmyk, composeLogos, composePattern, dominantColors, downloadBlob, openPdf, paintLabel, sheetCanvas, tintCanvas, viewsSheet, wrapPrint } from "@/lib/print";
+import { canvasPdf, cmyk, composeLogos, composePattern, dominantColors, downloadBlob, openPdf, paintLabel, sheetCanvas, tintCanvas, viewsSheet, wrapPrint } from "@/lib/print";
 import { BOX_CUPS, airFreight, chargedQty, SHEET_KZ_PER_EUR, cupWeightScale } from "@/lib/freight";
 import { dialForMarket, detectMarket, KZ_PER_EUR, pricePair, type Market } from "@/lib/money";
 import { DIALS } from "@/lib/phone";
@@ -485,7 +485,8 @@ export function BlinkApp() {
       freightNote: `aéreo  ·  ${numbers.charge} ${item.name}`,
     });
     const turns = [0, Math.PI * 0.28, Math.PI * 0.5];
-    const flat = cupStills(
+    const solid = shotsRef.current?.(turns, side) ?? [];
+    const fallback = cupStills(
       {
         texture: wrapPrint(texture, motif, motif ? 0.9 : itemArea.h / item.height) ?? texture,
         top: item.top,
@@ -496,11 +497,7 @@ export function BlinkApp() {
       },
       turns,
     );
-    const solid = shotsRef.current?.(turns, side) ?? [];
-    const views = angleSheet([
-      { name: "2D", labels: t.angles.slice(0, 3), shots: flat },
-      { name: "3D", labels: t.angles.slice(0, 3), shots: solid },
-    ]);
+    const views = viewsSheet(item.name, t.angles.slice(0, 3), solid.length === 3 ? solid : fallback);
     return [sheet, views];
   }
 

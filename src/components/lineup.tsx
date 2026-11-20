@@ -341,16 +341,28 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
           live.current.bot = live.current.otherBot;
         }
         target.position.x = 0;
-        renderer.setPixelRatio(2);
-        renderer.setClearColor(0xffffff, 1);
-        const frames = turns.map((turn) => {
+        const frames = turns.slice(0, 3).map((turn) => {
           target.rotation.y = turn;
-          renderer.setSize(900, 1200, false);
-          fit(true);
+          const w = 900;
+          const h = 1200;
+          const height = side === "soda" ? live.current.otherHeight : live.current.heightMm;
+          const topR = (side === "soda" ? live.current.otherTop : live.current.top) / 2;
+          renderer.setPixelRatio(2);
+          renderer.setSize(w, h, false);
+          renderer.setClearColor(0xf6f3ee, 1);
+          camera.aspect = w / h;
+          camera.fov = 30;
+          const lookY = height * 0.46;
+          const vFov = (camera.fov * Math.PI) / 180;
+          const tan = Math.tan(vFov / 2);
+          const dist = Math.max((height * 0.72) / tan, (topR * 1.7) / (tan * camera.aspect));
+          camera.position.set(0, lookY, dist);
+          camera.lookAt(0, lookY, 0);
+          camera.updateProjectionMatrix();
           renderer.render(scene, camera);
           const shot = document.createElement("canvas");
-          shot.width = 900;
-          shot.height = 1200;
+          shot.width = w;
+          shot.height = h;
           shot.getContext("2d")?.drawImage(renderer.domElement, 0, 0);
           return shot;
         });
@@ -447,7 +459,7 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
         drag.current = null;
         if (!start || !shotsHolder.current?.current || !onViewsRef.current) return;
         if (Math.hypot(event.clientX - start.x, event.clientY - start.y) > 8) return;
-        onViewsRef.current(shotsHolder.current.current([0, Math.PI * 0.28, Math.PI * 0.5, Math.PI, -Math.PI * 0.28, 0]));
+        onViewsRef.current(shotsHolder.current.current([0, Math.PI * 0.28, Math.PI * 0.5]));
       }}
     />
   );
