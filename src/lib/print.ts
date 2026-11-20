@@ -663,3 +663,67 @@ export function downloadBlob(blob: Blob, name: string) {
   link.click();
   URL.revokeObjectURL(url);
 }
+
+export function wrapPrint(source: HTMLCanvasElement | null, motif: HTMLCanvasElement | null, spanCover = 0.6): HTMLCanvasElement | null {
+  if (!source && !motif) return null;
+  const wrap = document.createElement("canvas");
+  wrap.width = 2048;
+  wrap.height = 1024;
+  const ctx = wrap.getContext("2d");
+  if (!ctx) return null;
+  const lip = 0.04;
+  const span = Math.min(Math.max(0.35, spanCover), 0.92);
+  const y = lip * wrap.height;
+  const band = span * wrap.height;
+  const inkBox = (image: HTMLCanvasElement) => {
+    const read = image.getContext("2d", { willReadFrequently: true });
+    if (!read || image.width < 2 || image.height < 2) return null;
+    const data = read.getImageData(0, 0, image.width, image.height).data;
+    let minX = image.width;
+    let minY = image.height;
+    let maxX = -1;
+    let maxY = -1;
+    for (let y0 = 0; y0 < image.height; y0 += 2) {
+      for (let x0 = 0; x0 < image.width; x0 += 2) {
+        if (data[(y0 * image.width + x0) * 4 + 3] <= 24) continue;
+        if (x0 < minX) minX = x0;
+        if (y0 < minY) minY = y0;
+        if (x0 > maxX) maxX = x0;
+        if (y0 > maxY) maxY = y0;
+      }
+    }
+    if (maxX < 0) return null;
+    return { x: minX, y: minY, w: Math.max(2, maxX - minX + 2), h: Math.max(2, maxY - minY + 2) };
+  };
+  if (motif) {
+    const copies = 4;
+    const slot = wrap.width / copies;
+    const iw = motif.width || 1;
+    const ih = motif.height || 1;
+    for (let i = 0; i < copies; i += 1) {
+      const scale = Math.max(slot / iw, band / ih);
+      const dw = iw * scale;
+      const dh = ih * scale;
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(i * slot, y, slot, band);
+      ctx.clip();
+      ctx.drawImage(motif, i * slot + (slot - dw) / 2, y + (band - dh) / 2, dw, dh);
+      ctx.restore();
+    }
+  }
+  if (source) {
+    const box = inkBox(source);
+    if (box) {
+      const copies = box.w / box.h > 2.4 ? 2 : box.w / box.h < 0.85 ? 4 : 3;
+      const slot = wrap.width / copies;
+      for (let i = 0; i < copies; i += 1) {
+        const scale = Math.min((slot * 0.82) / box.w, (band * 0.82) / box.h);
+        const dw = box.w * scale;
+        const dh = box.h * scale;
+        ctx.drawImage(source, box.x, box.y, box.w, box.h, i * slot + (slot - dw) / 2, y + (band - dh) / 2, dw, dh);
+      }
+    }
+  }
+  return wrap;
+}

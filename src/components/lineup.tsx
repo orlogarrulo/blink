@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { wrapPrint } from "@/lib/print";
 
 type Props = {
   texture: HTMLCanvasElement | null;
@@ -260,76 +261,12 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
       let beerMap: InstanceType<typeof THREE.CanvasTexture> | null = null;
       let sodaMap: InstanceType<typeof THREE.CanvasTexture> | null = null;
       const paintWrap = (source: HTMLCanvasElement | null, spanCover: number, motif: HTMLCanvasElement | null) => {
-        const wrap = document.createElement("canvas");
-        wrap.width = 2048;
-        wrap.height = 1024;
-        const ctx = wrap.getContext("2d");
-        if (!ctx) return null;
-        ctx.clearRect(0, 0, wrap.width, wrap.height);
-        const lip = 0.04;
-        const span = Math.min(Math.max(0.35, spanCover), 0.92);
-        const y = lip * wrap.height;
-        const band = span * wrap.height;
-        const inkShare = (image: HTMLCanvasElement) => {
-          const read = image.getContext("2d", { willReadFrequently: true });
-          if (!read) return 1;
-          const data = read.getImageData(0, 0, image.width, image.height).data;
-          let ink = 0;
-          let n = 0;
-          for (let i = 3; i < data.length; i += 32) {
-            n += 1;
-            if (data[i] > 24) ink += 1;
-          }
-          return n ? ink / n : 0;
-        };
-        const blit = (image: CanvasImageSource, sx: number, sy: number, sw: number, sh: number, dx: number, dy: number, dw: number, dh: number) => {
-          ctx.drawImage(image, sx, sy, sw, sh, dx, dy, dw, dh);
-        };
-        if (motif) {
-          const copies = 4;
-          const slot = wrap.width / copies;
-          const iw = motif.width || 1;
-          const ih = motif.height || 1;
-          for (let i = 0; i < copies; i += 1) {
-            const scale = Math.max(slot / iw, band / ih);
-            const dw = iw * scale;
-            const dh = ih * scale;
-            ctx.save();
-            ctx.beginPath();
-            ctx.rect(i * slot, y, slot, band);
-            ctx.clip();
-            ctx.drawImage(motif, i * slot + (slot - dw) / 2, y + (band - dh) / 2, dw, dh);
-            ctx.restore();
-          }
-        }
-        if (source) {
-          const share = inkShare(source);
-          const copies = share < 0.04 ? 1 : share < 0.16 ? 4 : share < 0.38 ? 3 : 2;
-          const slot = wrap.width / copies;
-          const iw = source.width || 1;
-          const ih = source.height || 1;
-          for (let i = 0; i < copies; i += 1) {
-            const pad = slot * 0.08;
-            const boxW = slot - pad * 2;
-            const boxH = band * 0.88;
-            if (share > 0.45) {
-              const scale = Math.max(boxW / iw, boxH / ih);
-              const sw = boxW / scale;
-              const sh = boxH / scale;
-              blit(source, (iw - sw) / 2, (ih - sh) / 2, sw, sh, i * slot + pad, y + (band - boxH) / 2, boxW, boxH);
-            } else {
-              const scale = Math.min(boxW / iw, boxH / ih);
-              const dw = iw * scale;
-              const dh = ih * scale;
-              blit(source, 0, 0, iw, ih, i * slot + (slot - dw) / 2, y + (band - dh) / 2, dw, dh);
-            }
-          }
-        }
-        if (!motif && !source) return null;
+        const wrap = wrapPrint(source, motif, spanCover);
+        if (!wrap) return null;
         const next = new THREE.CanvasTexture(wrap);
         next.colorSpace = THREE.SRGBColorSpace;
         next.anisotropy = renderer.capabilities.getMaxAnisotropy();
-        next.wrapS = THREE.RepeatWrapping;
+        next.wrapS = THREE.ClampToEdgeWrapping;
         next.needsUpdate = true;
         return next;
       };
