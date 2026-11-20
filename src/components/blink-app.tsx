@@ -1063,7 +1063,11 @@ export function BlinkApp() {
             <div className="relative max-h-[90vh] w-full max-w-2xl rounded-3xl bg-white p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
               <button type="button" className="absolute right-4 top-4 text-sm text-muted" onClick={() => setZoomedCup(null)}>Fechar</button>
               <h3 className="font-display text-xl">{item.name} · {item.height} mm</h3>
-              <p className="mt-1 text-sm text-muted">Material em detalhe. Clica fora ou em Fechar para voltar.</p>
+              <p className="mt-1 text-sm text-muted">
+                {item.measured ? `${item.height} × boca ${item.top} × base ${item.bot} mm` : item.height + " mm"}
+                {win ? ` · janela ${win.w} × ${win.h} mm` : ""}
+              </p>
+              <p className="text-xs text-muted">Material em detalhe. Clica fora ou em Fechar para voltar.</p>
               <div className="mt-4 h-[60vh] rounded-2xl bg-white">
                 <CupView
                   texture={null}
