@@ -1,5 +1,4 @@
 import { useEffect, useRef } from "react";
-import { wrapPrint } from "@/lib/print";
 
 type Props = {
   texture: HTMLCanvasElement | null;
@@ -14,19 +13,20 @@ type Props = {
   otherTexture: HTMLCanvasElement | null;
   otherBody?: string | null;
   patternArt?: HTMLCanvasElement | null;
-  otherPattern?: HTMLCanvasElement | null;
   spin: boolean;
   body?: string | null;
   mode?: "frost" | "clear" | "studio";
   className?: string;
-  shotsRef?: { current: ((turns: number[], side?: "beer" | "soda") => HTMLCanvasElement[]) | null };
+  shotsRef?: { current: ((turns: number[]) => HTMLCanvasElement[]) | null };
   onViews?: (shots: HTMLCanvasElement[]) => void;
 };
 
-export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot, otherHeight, otherCover, otherTexture, otherBody = null, patternArt = null, otherPattern = null, spin, body = null, mode = "frost", className, shotsRef, onViews }: Props) {
+const BOTTLE_H = 230;
+
+export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot, otherHeight, otherCover, otherTexture, otherBody = null, patternArt = null, spin, body = null, mode = "frost", className, shotsRef, onViews }: Props) {
   const ref = useRef<HTMLCanvasElement>(null);
-  const live = useRef({ texture, top, bot, heightMm, cover, otherTop, otherBot, otherHeight, otherCover, otherTexture, otherBody, patternArt, otherPattern, spin, body, mode });
-  live.current = { texture, top, bot, heightMm, cover, otherTop, otherBot, otherHeight, otherCover, otherTexture, otherBody, patternArt, otherPattern, spin, body, mode };
+  const live = useRef({ texture, top, bot, heightMm, cover, otherTop, otherBot, otherHeight, otherCover, otherTexture, otherBody, patternArt, spin, body, mode });
+  live.current = { texture, top, bot, heightMm, cover, otherTop, otherBot, otherHeight, otherCover, otherTexture, otherBody, patternArt, spin, body, mode };
   const onViewsRef = useRef(onViews);
   onViewsRef.current = onViews;
   const shotsHolder = useRef(shotsRef);
@@ -163,8 +163,285 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
         return { group, decalMat, topR, botR, height };
       };
 
-      // ... rest of the original file continues unchanged after makeCup ...
-      // (truncated here for the tool call; full file is on disk)
+      const beer = makeCup("beer", { top: live.current.top, bot: live.current.bot, height: live.current.heightMm });
+      const soda = makeCup("soda", { top: live.current.otherTop, bot: live.current.otherBot, height: live.current.otherHeight });
+      cupSpin.add(beer.group);
+      cupSpinRight.add(soda.group);
+
+      const bottle = new THREE.Group();
+      const glass = new THREE.Mesh(
+        new THREE.LatheGeometry(
+          [[27, 0], [32, 6], [33.5, 16], [33.5, 148], [30, 162], [20, 176], [14, 192], [12.6, 214], [13.2, 222], [15.4, 226], [15.2, 230]].map(([x, y]) => new THREE.Vector2(x, y)),
+          80,
+        ),
+        new THREE.MeshPhysicalMaterial({
+          color: 0xc47a32,
+          roughness: 0.04,
+          transmission: 0.86,
+          thickness: 4,
+          ior: 1.5,
+          clearcoat: 1,
+          clearcoatRoughness: 0.05,
+          attenuationColor: new THREE.Color(0x8a3e10),
+          attenuationDistance: 28,
+          envMapIntensity: 1.2,
+        }),
+      );
+      glass.castShadow = true;
+      bottle.add(glass);
+      bottle.add(new THREE.Mesh(
+        new THREE.LatheGeometry([[1, 8], [30, 14], [30.2, 150], [18, 164], [12, 172], [1, 172]].map(([x, y]) => new THREE.Vector2(x, y)), 48),
+        new THREE.MeshPhysicalMaterial({
+          color: 0xdd7c0d,
+          roughness: 0.08,
+          transmission: 0.45,
+          thickness: 24,
+          ior: 1.34,
+          attenuationColor: new THREE.Color(0xb85a08),
+          attenuationDistance: 18,
+          transparent: true,
+        }),
+      ));
+      const paper = new THREE.Mesh(
+        new THREE.CylinderGeometry(33.7, 33.7, 62, 64, 1, true),
+        new THREE.MeshStandardMaterial({ color: 0xf4efe4, roughness: 0.55, side: THREE.DoubleSide }),
+      );
+      paper.position.y = 78;
+      bottle.add(paper);
+      const band = new THREE.Mesh(
+        new THREE.CylinderGeometry(33.85, 33.85, 10, 64, 1, true),
+        new THREE.MeshStandardMaterial({ color: 0x1f6b3a, roughness: 0.4, side: THREE.DoubleSide }),
+      );
+      band.position.y = 108;
+      bottle.add(band);
+      const cap = new THREE.Mesh(
+        new THREE.CylinderGeometry(15.6, 15.2, 8, 40),
+        new THREE.MeshStandardMaterial({ color: 0xd6d3cc, metalness: 0.82, roughness: 0.28 }),
+      );
+      cap.position.y = 226;
+      bottle.add(cap);
+      root.add(bottle);
+      const can = new THREE.Group();
+      const canShell = new THREE.Mesh(
+        new THREE.LatheGeometry([[26, 0], [32.4, 5], [33, 12], [33, 100], [31.2, 107], [24, 113], [22, 115]].map(([x, y]) => new THREE.Vector2(x, y)), 72),
+        new THREE.MeshStandardMaterial({ color: 0xd5d8dc, metalness: 0.92, roughness: 0.22 }),
+      );
+      canShell.castShadow = true;
+      can.add(canShell);
+      const canLabel = new THREE.Mesh(
+        new THREE.CylinderGeometry(33.15, 33.15, 72, 64, 1, true),
+        new THREE.MeshStandardMaterial({ color: 0xc8102e, metalness: 0.35, roughness: 0.32, side: THREE.DoubleSide }),
+      );
+      canLabel.position.y = 58;
+      can.add(canLabel);
+      const lid = new THREE.Mesh(
+        new THREE.CylinderGeometry(24, 26, 3.2, 48),
+        new THREE.MeshStandardMaterial({ color: 0xe7eaee, metalness: 0.95, roughness: 0.16 }),
+      );
+      lid.position.y = 113.2;
+      can.add(lid);
+      const tab = new THREE.Mesh(
+        new THREE.BoxGeometry(8, 0.6, 16),
+        new THREE.MeshStandardMaterial({ color: 0xd0d4d8, metalness: 0.9, roughness: 0.2 }),
+      );
+      tab.position.set(2, 115.2, 0);
+      can.add(tab);
+      root.add(can);
+
+      const metrics = () => {
+        const leftR = live.current.top / 2;
+        const rightR = live.current.otherTop / 2;
+        const gap = 22;
+        const bottleX = leftR + gap + 34;
+        const canX = bottleX + 34 + gap + 33;
+        const sodaX = canX + 33 + gap + rightR;
+        return { bottleX, canX, sodaX, span: sodaX + rightR + leftR };
+      };
+      const place = () => {
+        const row = metrics();
+        const mid = row.sodaX / 2;
+        cupSpin.position.x = -mid;
+        bottle.position.x = row.bottleX - mid;
+        can.position.x = row.canX - mid;
+        cupSpinRight.position.x = row.sodaX - mid;
+      };
+
+      let beerMap: InstanceType<typeof THREE.CanvasTexture> | null = null;
+      let sodaMap: InstanceType<typeof THREE.CanvasTexture> | null = null;
+      const paintWrap = (source: HTMLCanvasElement | null, spanCover: number, motif: HTMLCanvasElement | null) => {
+        const wrap = document.createElement("canvas");
+        wrap.width = 2048;
+        wrap.height = 1024;
+        const ctx = wrap.getContext("2d");
+        if (!ctx) return null;
+        ctx.clearRect(0, 0, wrap.width, wrap.height);
+        const lip = 0.04;
+        const span = Math.min(Math.max(0.35, spanCover), 0.92);
+        const y = lip * wrap.height;
+        const band = span * wrap.height;
+        if (motif) {
+          const copies = 4;
+          const slot = wrap.width / copies;
+          const iw = motif.width || 1;
+          const ih = motif.height || 1;
+          for (let i = 0; i < copies; i += 1) {
+            const scale = Math.max(slot / iw, band / ih);
+            const dw = iw * scale;
+            const dh = ih * scale;
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(i * slot, y, slot, band);
+            ctx.clip();
+            ctx.drawImage(motif, i * slot + (slot - dw) / 2, y + (band - dh) / 2, dw, dh);
+            ctx.restore();
+          }
+        }
+        if (source) {
+          const slot = motif ? wrap.width * 0.5 : wrap.width;
+          ctx.drawImage(source, (wrap.width - slot) / 2, y, slot, band);
+        }
+        if (!motif && !source) return null;
+        const next = new THREE.CanvasTexture(wrap);
+        next.colorSpace = THREE.SRGBColorSpace;
+        next.anisotropy = renderer.capabilities.getMaxAnisotropy();
+        next.wrapS = THREE.RepeatWrapping;
+        next.needsUpdate = true;
+        return next;
+      };
+      const paint = () => {
+        beerMap?.dispose();
+        sodaMap?.dispose();
+        const current = live.current;
+        beerMap = paintWrap(current.texture, current.cover, current.patternArt);
+        sodaMap = paintWrap(current.otherTexture ?? current.texture, current.otherCover, current.patternArt);
+        beer.decalMat.map = beerMap;
+        soda.decalMat.map = sodaMap;
+        beer.decalMat.needsUpdate = true;
+        soda.decalMat.needsUpdate = true;
+      };
+      paint();
+
+      const ground = new THREE.Mesh(new THREE.CircleGeometry(520, 48), new THREE.ShadowMaterial({ opacity: 0.16 }));
+      ground.rotation.x = -Math.PI / 2;
+      ground.receiveShadow = true;
+      scene.add(ground);
+      const key = new THREE.DirectionalLight(0xffffff, 2.4);
+      key.position.set(-180, 420, 260);
+      key.castShadow = true;
+      key.shadow.mapSize.set(1024, 1024);
+      key.shadow.camera.near = 10;
+      key.shadow.camera.far = 1200;
+      key.shadow.camera.left = -400;
+      key.shadow.camera.right = 400;
+      key.shadow.camera.top = 400;
+      key.shadow.camera.bottom = -80;
+      scene.add(key);
+      scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+      scene.add(new THREE.DirectionalLight(0xffffff, 0.8)).position.set(40, 180, -260);
+
+      const fit = (onlyCup: boolean) => {
+        const w = onlyCup ? 900 : canvas.clientWidth;
+        const h = onlyCup ? 1200 : canvas.clientHeight;
+        if (!onlyCup && (w < 2 || h < 2)) return;
+        if (!onlyCup) renderer.setSize(w, h, false);
+        camera.aspect = w / h;
+        camera.fov = onlyCup ? 18 : 22;
+        const height = live.current.heightMm;
+        const lookY = onlyCup ? height * 0.5 : BOTTLE_H * 0.5;
+        const fov = (camera.fov * Math.PI) / 180;
+        const tan = Math.tan(fov / 2);
+        const halfH = (onlyCup ? height * 0.62 : BOTTLE_H * 0.58);
+        const halfW = onlyCup ? Math.max(live.current.top * 0.7, height * 0.45) : metrics().span * 0.55;
+        const dist = Math.max(halfH / tan, halfW / (tan * Math.max(0.2, camera.aspect))) * 1.08;
+        camera.position.set(0, lookY, dist);
+        camera.lookAt(0, lookY, 0);
+        camera.updateProjectionMatrix();
+      };
+      fit(false);
+      const observer = new ResizeObserver(() => fit(false));
+      observer.observe(canvas);
+
+      const shootCup = (turns: number[]) => {
+        const saved = cupSpin.rotation.y;
+        const hidden = [bottle, can, cupSpinRight];
+        hidden.forEach((item) => {
+          item.visible = false;
+        });
+        cupSpin.position.x = 0;
+        renderer.setPixelRatio(2);
+        renderer.setClearColor(0xffffff, 1);
+        const frames = turns.map((turn) => {
+          cupSpin.rotation.y = turn;
+          renderer.setSize(900, 1200, false);
+          fit(true);
+          renderer.render(scene, camera);
+          const shot = document.createElement("canvas");
+          shot.width = 900;
+          shot.height = 1200;
+          shot.getContext("2d")?.drawImage(renderer.domElement, 0, 0);
+          return shot;
+        });
+        hidden.forEach((item) => {
+          item.visible = true;
+        });
+        cupSpin.rotation.y = saved;
+        place();
+        renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+        fit(false);
+        return frames;
+      };
+      if (shotsHolder.current) shotsHolder.current.current = shootCup;
+
+      const loop = () => {
+        const spec = live.current;
+        const tint = spec.body || "";
+        if (beer.group.userData.mode !== spec.mode) {
+          beer.group.userData.mode = spec.mode;
+          const apply = (group: typeof beer.group) => {
+            const mat = (group.children[0] as { material: { transmission: number; roughness: number; clearcoat: number } }).material;
+            mat.transmission = spec.mode === "clear" ? 0.72 : spec.mode === "studio" ? 0.04 : 0.18;
+            mat.roughness = spec.mode === "studio" ? 0.42 : 0.16;
+            mat.clearcoat = spec.mode === "studio" ? 0.35 : 1;
+          };
+          apply(beer.group);
+          apply(soda.group);
+        }
+        if (beer.group.userData.tint !== tint) {
+          beer.group.userData.tint = tint;
+          const mat = (beer.group.children[0] as { material: { color: { set: (v: string | number) => void } } }).material;
+          mat.color.set(tint || 0xf4f1ec);
+        }
+        const otherTint = spec.otherBody || "";
+        if (soda.group.userData.tint !== otherTint) {
+          soda.group.userData.tint = otherTint;
+          const mat2 = (soda.group.children[0] as { material: { color: { set: (v: string | number) => void } } }).material;
+          mat2.color.set(otherTint || 0xf4f1ec);
+        }
+        const texKey = `${spec.texture ? 1 : 0}:${spec.otherTexture ? 1 : 0}:${spec.patternArt ? 1 : 0}:${spec.cover}:${spec.otherCover}`;
+        if (beer.group.userData.tex !== spec.texture || soda.group.userData.tex !== spec.otherTexture || beer.group.userData.pat !== spec.patternArt || beer.group.userData.key !== texKey) {
+          beer.group.userData.tex = spec.texture;
+          soda.group.userData.tex = spec.otherTexture;
+          beer.group.userData.pat = spec.patternArt;
+          beer.group.userData.key = texKey;
+          paint();
+        }
+        place();
+        if (spec.spin && !drag.current) angle.current += 0.012;
+        cupSpin.rotation.y = angle.current;
+        cupSpinRight.rotation.y = angle.current;
+        renderer.render(scene, camera);
+        frame = requestAnimationFrame(loop);
+      };
+      frame = requestAnimationFrame(loop);
+
+      dispose = () => {
+        cancelAnimationFrame(frame);
+        observer.disconnect();
+        beerMap?.dispose();
+        sodaMap?.dispose();
+        renderer.dispose();
+        pmrem.dispose();
+      };
     })();
 
     return () => {
@@ -179,6 +456,21 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
       ref={ref}
       className={className ?? "h-[32rem] w-full"}
       aria-label="Copo, garrafa e lata na mesma escala"
+      onPointerDown={(event) => {
+        drag.current = { x: event.clientX, y: event.clientY, a: angle.current };
+        event.currentTarget.setPointerCapture(event.pointerId);
+      }}
+      onPointerMove={(event) => {
+        if (!drag.current) return;
+        angle.current = drag.current.a + (event.clientX - drag.current.x) * 0.01;
+      }}
+      onPointerUp={(event) => {
+        const start = drag.current;
+        drag.current = null;
+        if (!start || !shotsHolder.current?.current || !onViewsRef.current) return;
+        if (Math.hypot(event.clientX - start.x, event.clientY - start.y) > 8) return;
+        onViewsRef.current(shotsHolder.current.current([0, Math.PI * 0.28, Math.PI * 0.5, Math.PI, -Math.PI * 0.28, 0]));
+      }}
     />
   );
 }
