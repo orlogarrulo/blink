@@ -115,7 +115,7 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
         const group = new THREE.Group();
         group.add(mesh);
         const rim = new THREE.Mesh(
-          new THREE.TorusGeometry(topR * 0.985, Math.max(0.35, topR * 0.018), 10, 64),
+          new THREE.TorusGeometry(topR * 0.992, Math.max(0.12, topR * 0.008), 8, 64),
           new THREE.MeshPhysicalMaterial({
             color: spec.body || 0xffffff,
             roughness: 0.14,
