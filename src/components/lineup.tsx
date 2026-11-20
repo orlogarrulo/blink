@@ -348,12 +348,13 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
         camera.fov = onlyCup ? 18 : 20;
         const height = live.current.heightMm;
         // Center vertically on the visual middle of the group (base at 0, tallest is bottle)
-        const lookY = onlyCup ? height * 0.48 : BOTTLE_H * 0.46;
+        // Force visual center lower so the group sits in the middle of the canvas
+        const lookY = onlyCup ? height * 0.48 : BOTTLE_H * 0.38;
         const fov = (camera.fov * Math.PI) / 180;
         const tan = Math.tan(fov / 2);
-        const halfH = onlyCup ? height * 0.58 : BOTTLE_H * 0.52;
-        const halfW = onlyCup ? Math.max(live.current.top * 0.65, height * 0.42) : metrics().span * 0.52;
-        const dist = Math.max(halfH / tan, halfW / (tan * Math.max(0.25, camera.aspect))) * 1.15;
+        const halfH = onlyCup ? height * 0.58 : BOTTLE_H * 0.48;
+        const halfW = onlyCup ? Math.max(live.current.top * 0.65, height * 0.42) : metrics().span * 0.50;
+        const dist = Math.max(halfH / tan, halfW / (tan * Math.max(0.25, camera.aspect))) * 1.25;
         camera.position.set(0, lookY, dist);
         camera.lookAt(0, lookY, 0);
         camera.updateProjectionMatrix();
