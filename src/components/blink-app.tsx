@@ -67,12 +67,12 @@ function moneyKz(value: number) {
   return `${new Intl.NumberFormat("pt-PT", { maximumFractionDigits: 0 }).format(Math.round(value))} Kz`;
 }
 
-function SheetMoney({ kz }: { kz: number }) {
+function SheetMoney({ kz, inline = false }: { kz: number; inline?: boolean }) {
   const euro = new Intl.NumberFormat("pt-PT", { style: "currency", currency: "EUR" }).format(kz / SHEET_KZ_PER_EUR);
   return (
-    <span className="block leading-tight">
-      <span className="block">{euro}</span>
-      <span className="block text-xs text-muted">{moneyKz(kz)}</span>
+    <span className={inline ? "inline-flex items-baseline gap-2" : "block leading-tight"}>
+      <span>{euro}</span>
+      <span className="text-xs text-muted">{moneyKz(kz)}</span>
     </span>
   );
 }
@@ -657,7 +657,7 @@ export function BlinkApp() {
                   otherBody={right.cupTint}
                   patternArt={pattern}
                   otherPattern={rightPattern}
-                  spin={spin}
+                  spin={Boolean(art || pattern || rightArt || rightPattern) && spin}
                   body={cupTint}
                   mode={renderMode}
                   shotsRef={shotsRef}
@@ -690,7 +690,6 @@ export function BlinkApp() {
                       <li key={`bp-${item.name}-${index}`} className="flex items-center justify-between gap-1 text-xs"><span className="min-w-0 truncate">{item.name}</span><button type="button" className="min-h-11 shrink-0 px-2" onClick={() => setPatterns((current) => current.filter((_, i) => i !== index))}>{t.remove}</button></li>
                     ))}
                   </ul>
-                  <button type="button" className="mt-2 min-h-11 w-full rounded-full bg-ink text-sm text-paper" onClick={() => void saveCard("beer")}>{t.download}</button>
                   <input
                     className={`${control} mt-2`}
                     maxLength={60}
@@ -727,8 +726,9 @@ export function BlinkApp() {
                     <input className="mt-1 min-h-11 w-full rounded-xl border border-line bg-white px-3 text-sm text-ink" type="number" min={1} inputMode="numeric" value={draft.qty || ""} onChange={(event) => patch({ qty: Math.max(0, Math.floor(Number(event.target.value) || 0)) })} />
                   </label>
                   <p className="mt-2 text-sm">{liveQuote(cup, draft.qty).charge.toLocaleString(locale)} · {liveQuote(cup, draft.qty).boxes} {t.boxes}</p>
-                  <p className="text-sm"><SheetMoney kz={liveQuote(cup, draft.qty).finalUnit} /> {t.perUnit}</p>
-                  <p className="font-medium"><SheetMoney kz={liveQuote(cup, draft.qty).lot} /> {t.inLot}</p>
+                  <p className="text-sm"><SheetMoney inline kz={liveQuote(cup, draft.qty).finalUnit} /> {t.perUnit}</p>
+                  <p className="font-medium"><SheetMoney inline kz={liveQuote(cup, draft.qty).lot} /> {t.inLot}</p>
+                  <button type="button" className="mt-2 min-h-11 w-full rounded-full bg-ink text-sm text-paper" onClick={() => void saveCard("beer")}>{t.addPdf}</button>
                 </div>
                 <div className="min-w-0 rounded-2xl border border-line p-2">
                   <label className="flex flex-col gap-1 text-xs text-muted">
@@ -751,7 +751,6 @@ export function BlinkApp() {
                       <li key={`rp-${item.name}-${index}`} className="flex items-center justify-between gap-1 text-xs"><span className="min-w-0 truncate">{item.name}</span><button type="button" className="min-h-11 shrink-0 px-2" onClick={() => setRightPatterns((current) => current.filter((_, i) => i !== index))}>{t.remove}</button></li>
                     ))}
                   </ul>
-                  <button type="button" className="mt-2 min-h-11 w-full rounded-full bg-ink text-sm text-paper" onClick={() => void saveCard("soda")}>{t.download}</button>
                   <input
                     className={`${control} mt-2`}
                     maxLength={60}
@@ -788,8 +787,9 @@ export function BlinkApp() {
                     <input className="mt-1 min-h-11 w-full rounded-xl border border-line bg-white px-3 text-sm text-ink" type="number" min={1} inputMode="numeric" value={compareQty || ""} onChange={(event) => setCompareQty(Math.max(0, Math.floor(Number(event.target.value) || 0)))} />
                   </label>
                   <p className="mt-2 text-sm">{liveQuote(other, compareQty).charge.toLocaleString(locale)} · {liveQuote(other, compareQty).boxes} {t.boxes}</p>
-                  <p className="text-sm"><SheetMoney kz={liveQuote(other, compareQty).finalUnit} /> {t.perUnit}</p>
-                  <p className="font-medium"><SheetMoney kz={liveQuote(other, compareQty).lot} /> {t.inLot}</p>
+                  <p className="text-sm"><SheetMoney inline kz={liveQuote(other, compareQty).finalUnit} /> {t.perUnit}</p>
+                  <p className="font-medium"><SheetMoney inline kz={liveQuote(other, compareQty).lot} /> {t.inLot}</p>
+                  <button type="button" className="mt-2 min-h-11 w-full rounded-full bg-ink text-sm text-paper" onClick={() => void saveCard("soda")}>{t.addPdf}</button>
                 </div>
               </div>
               <div className="flex flex-wrap items-center justify-between gap-3 bg-white px-3 pb-3">
@@ -822,9 +822,11 @@ export function BlinkApp() {
                 <p className="text-sm text-muted">
                   {cup.name} · {chosenId ? t.sample[chosenId as SampleId].name : ""} · {t.process[process]}
                 </p>
-                <button type="button" className="min-h-11 px-3 text-sm" onClick={() => setSpin((value) => !value)}>
-                  {spin ? t.stop : t.spin}
-                </button>
+                {(art || pattern || rightArt || rightPattern) ? (
+                  <button type="button" className="min-h-11 px-3 text-sm" onClick={() => setSpin((value) => !value)}>
+                    {spin ? t.stop : t.spin}
+                  </button>
+                ) : null}
               </div>
               {chosen ? <WindowPlate area={area} process={process} canvas={chosen} caption={t} /> : null}
             </div>

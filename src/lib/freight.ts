@@ -33,12 +33,11 @@ export type AirFreight = {
 
 export const BOX_CUPS = 400;
 
-export function chargedQty(qty: number, minimum: number, exactTiers: number[]): number {
+export function chargedQty(qty: number, _minimum: number, exactTiers: number[]): number {
   const asked = Math.max(0, Math.floor(qty) || 0);
-  const min = Math.max(BOX_CUPS, minimum);
   if (exactTiers.includes(asked)) return asked;
-  if (asked < min) return min;
-  return Math.ceil(asked / BOX_CUPS) * BOX_CUPS;
+  if (asked < BOX_CUPS) return BOX_CUPS;
+  return asked;
 }
 
 function factoryEur(qty: number): number {
