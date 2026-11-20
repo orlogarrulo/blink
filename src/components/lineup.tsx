@@ -438,16 +438,33 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
           apply(beer.group);
           apply(soda.group);
         }
+        const applyPreset = (mat: { color: { set: (v: string | number) => void }; transmission: number; roughness: number; attenuationColor?: { set: (v: string | number) => void }; attenuationDistance?: number }, hex: string) => {
+          mat.color.set(hex || 0xffffff);
+          if (hex === "#C47A32" || hex.toLowerCase() === "#c47a32") {
+            mat.transmission = 0.55;
+            mat.roughness = 0.08;
+            if (mat.attenuationColor) mat.attenuationColor.set(0xb85a08);
+            if (mat.attenuationDistance !== undefined) mat.attenuationDistance = 18;
+          } else if (hex === "#2A0C08" || hex.toLowerCase() === "#2a0c08") {
+            mat.transmission = 0.42;
+            mat.roughness = 0.1;
+            if (mat.attenuationColor) mat.attenuationColor.set(0x120402);
+            if (mat.attenuationDistance !== undefined) mat.attenuationDistance = 12;
+          } else if (!hex) {
+            mat.transmission = 0.78;
+            mat.roughness = 0.12;
+          }
+        };
         if (beer.group.userData.tint !== tint) {
           beer.group.userData.tint = tint;
-          const mat = (beer.group.children[0] as { material: { color: { set: (v: string | number) => void } } }).material;
-          mat.color.set(tint || 0xffffff);
+          const mat = (beer.group.children[0] as { material: { color: { set: (v: string | number) => void }; transmission: number; roughness: number; attenuationColor?: { set: (v: string | number) => void }; attenuationDistance?: number } }).material;
+          applyPreset(mat, tint);
         }
         const otherTint = spec.otherBody || "";
         if (soda.group.userData.tint !== otherTint) {
           soda.group.userData.tint = otherTint;
-          const mat2 = (soda.group.children[0] as { material: { color: { set: (v: string | number) => void } } }).material;
-          mat2.color.set(otherTint || 0xffffff);
+          const mat2 = (soda.group.children[0] as { material: { color: { set: (v: string | number) => void }; transmission: number; roughness: number; attenuationColor?: { set: (v: string | number) => void }; attenuationDistance?: number } }).material;
+          applyPreset(mat2, otherTint);
         }
         const texId = (c: HTMLCanvasElement | null) => c ? `${c.width}x${c.height}:${c.getContext("2d") ? 1 : 0}` : "0";
         const texKey = `${texId(spec.texture)}:${texId(spec.otherTexture)}:${spec.patternArt ? 1 : 0}:${spec.otherPattern ? 1 : 0}:${spec.cover}:${spec.otherCover}:${spec.texture === spec.otherTexture ? 1 : 0}`;
