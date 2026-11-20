@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { CupView, cupStills } from "@/components/cup-view";
-import { CupStage } from "@/components/cup-stage";
+import { Lineup } from "@/components/lineup";
 import {
   CUPS,
   PROCESS_LABEL,
@@ -17,7 +17,7 @@ import {
   type Process,
 } from "@/lib/catalog";
 import { LANGS, detectLang, localeFor, text, type Lang } from "@/lib/copy";
-import { angleSheet, canvasPdf, cmyk, composeArts, dominantColors, downloadBlob, openPdf, paintLabel, sheetCanvas, tintCanvas, viewsSheet } from "@/lib/print";
+import { angleSheet, canvasPdf, cmyk, composeLogos, composePattern, dominantColors, downloadBlob, openPdf, paintLabel, sheetCanvas, tintCanvas, viewsSheet } from "@/lib/print";
 import { BOX_CUPS, airFreight, chargedQty, SHEET_KZ_PER_EUR, cupWeightScale } from "@/lib/freight";
 import { dialForMarket, detectMarket, KZ_PER_EUR, pricePair, type Market } from "@/lib/money";
 import { DIALS } from "@/lib/phone";
@@ -143,10 +143,19 @@ function sampleById(id: SampleId) {
 export function BlinkApp() {
   const [draft, setDraft] = useState<Draft>(EMPTY);
   const [ready, setReady] = useState(false);
-  const [pieces, setPieces] = useState<HTMLImageElement[]>([]);
-  const [artNames, setArtNames] = useState<string[]>([]);
-  const art = useMemo(() => (pieces.length > 0 ? composeArts(pieces) : null), [pieces]);
+  const [logos, setLogos] = useState<{ image: HTMLImageElement; name: string }[]>([]);
+  const [patterns, setPatterns] = useState<{ image: HTMLImageElement; name: string }[]>([]);
+  const art = useMemo(() => (logos.length > 0 ? composeLogos(logos.map((item) => item.image)) : null), [logos]);
+  const pattern = useMemo(() => (patterns.length > 0 ? composePattern(patterns.map((item) => item.image)) : null), [patterns]);
   const [error, setError] = useState("");
+  const [compareId, setCompareId] = useState("ECO12");
+  const [right, setRight] = useState<{ phrase: string; font: FontId; sample: SampleId | null; tint: string | null; cupTint: string | null }>({
+    phrase: "",
+    font: "outfit",
+    sample: null,
+    tint: null,
+    cupTint: null,
+  });
   const [spin, setSpin] = useState(true);
   const [renderMode, setRenderMode] = useState<"frost" | "clear" | "studio">("frost");
   const [drink, setDrink] = useState<"none" | "beer" | "soda">("none");
@@ -184,9 +193,11 @@ export function BlinkApp() {
   }, [lang, t.title]);
 
   const cup = cupById(draft.cupId);
+  const other = cupById(compareId);
   const allowed = processesFor(cup);
   const process = allowed.includes(draft.process) ? draft.process : allowed[0];
   const area = areaFor(cup, process);
+  const otherArea = areaFor(other, processesFor(other).includes(process) ? process : processesFor(other)[0]);
   const minimum = Math.min(...cup.prices.map((row) => row.qty));
   const billed = chargedQty(draft.qty, minimum, cup.prices.map((row) => row.qty));
   const priced = priceFor(cup, billed);
@@ -208,13 +219,14 @@ export function BlinkApp() {
 
   const baseLabels = useMemo(() => {
     const phrase = draft.phrase.trim();
-    if (!area || (!art && !phrase) || typeof document === "undefined") return null;
+    if (!area || (!art && !pattern && !phrase) || typeof document === "undefined") return null;
     const family = fontCss(draft.font);
     const ppm = Math.min(12, Math.max(8, Math.round(1800 / area.w)));
     const probe = paintLabel({
       area,
       ppm,
       image: art,
+      pattern,
       scale: 1,
       shift: 0,
       title: phrase,
@@ -235,6 +247,7 @@ export function BlinkApp() {
         area,
         ppm,
         image: art,
+      pattern,
         scale: sample.scale,
         shift: 0,
         title: phrase,
@@ -249,7 +262,7 @@ export function BlinkApp() {
       });
     }
     return map;
-  }, [area, art, process, draft.phrase, draft.font]);
+  }, [area, art, pattern, process, draft.phrase, draft.font]);
 
   const fileColors = useMemo(() => (baseLabels ? dominantColors(baseLabels.medida, 4) : []), [baseLabels]);
 
@@ -307,16 +320,14 @@ export function BlinkApp() {
     patch({ cupId: id, process: nextAllowed.includes(draft.process) ? draft.process : nextAllowed[0] });
   }
 
-  async function onFiles(list: FileList | null) {
+  async function onFiles(list: FileList | null, role: "logo" | "pattern") {
     if (!list || list.length === 0) return;
     setError("");
     try {
-      const picked = Array.from(list);
-      const adding = picked.length === 1 && pieces.length > 0 && pieces.length < 3;
-      const files = adding ? picked.slice(0, 3 - pieces.length) : picked.slice(0, 3);
-      const images = await Promise.all(files.map((file) => readArt(file)));
-      setPieces(adding ? [...pieces, ...images] : images);
-      setArtNames(adding ? [...artNames, ...files.map((file) => file.name)] : files.map((file) => file.name));
+      const files = Array.from(list).slice(0, 3);
+      const images = await Promise.all(files.map(async (file) => ({ image: await readArt(file), name: file.name })));
+      if (role === "logo") setLogos((current) => [...current, ...images].slice(0, 3));
+      else setPatterns((current) => [...current, ...images].slice(0, 3));
       setTint(null);
       patch({ sample: null });
     } catch {
@@ -328,18 +339,64 @@ export function BlinkApp() {
     () => (vectorLabel && tint ? tintCanvas(vectorLabel, tint, process) : vectorLabel),
     [vectorLabel, tint, process],
   );
+  const otherAllowed = processesFor(other);
+  const otherProcess = otherAllowed.includes(process) ? process : otherAllowed[0];
+  const rightBase = useMemo(() => {
+    const phrase = right.phrase.trim();
+    if (!otherArea || (!art && !pattern && !phrase) || typeof document === "undefined") return null;
+    const family = fontCss(right.font);
+    const ppm = Math.min(12, Math.max(8, Math.round(1800 / otherArea.w)));
+    const palette = fileColors.length > 0 ? fileColors : ["#1A120C"];
+    const map = {} as Record<SampleId, HTMLCanvasElement>;
+    for (const sample of SAMPLES) {
+      if (sample.id === "vetor") continue;
+      map[sample.id] = paintLabel({
+        area: otherArea,
+        ppm,
+        image: art,
+        pattern,
+        scale: sample.scale,
+        shift: 0,
+        title: phrase,
+        font: family,
+        ink: palette[0],
+        process: otherProcess,
+        suggest: sample.flat,
+        palette,
+        inkCount: 2,
+        fit: sample.fit,
+        place: sample.id,
+      });
+    }
+    return map;
+  }, [otherArea, art, pattern, right.phrase, right.font, otherProcess, fileColors]);
+  const rightLabels = useMemo(() => {
+    if (!rightBase) return null;
+    if (!right.tint) return rightBase;
+    const map = {} as Record<SampleId, HTMLCanvasElement>;
+    for (const sample of SAMPLES) {
+      if (sample.id === "vetor" || !rightBase[sample.id]) continue;
+      map[sample.id] = tintCanvas(rightBase[sample.id], right.tint, otherProcess);
+    }
+    return map;
+  }, [rightBase, right.tint, otherProcess]);
   const chosenId = draft.sample;
   const chosen = chosenId === "vetor" ? vectorShown : chosenId && labels ? labels[chosenId] : null;
+  const rightCustom = Boolean(right.phrase.trim() || right.sample || right.tint || right.cupTint);
+  const rightId = right.sample ?? chosenId;
+  const rightShown = rightId && rightId !== "vetor" && rightLabels ? rightLabels[rightId] : null;
+  const otherTexture = rightCustom ? rightShown ?? chosen : chosen;
   const colors = chosen ? dominantColors(chosen, 3) : [];
 
   async function exportSheet() {
-    if (!area || !art || !chosenId) return;
+    if (!area || (!art && !pattern) || !chosenId) return;
     await document.fonts.ready;
     const sample = sampleById(chosenId);
     const probe = paintLabel({
       area,
       ppm: 300 / 25.4,
       image: art,
+      pattern,
       scale: 1,
       shift: 0,
       title: draft.phrase.trim(),
@@ -356,6 +413,7 @@ export function BlinkApp() {
       area,
       ppm: 300 / 25.4,
       image: art,
+      pattern,
       scale: sample.scale,
       shift: 0,
       title: draft.phrase.trim(),
@@ -479,20 +537,52 @@ export function BlinkApp() {
       <div className="mt-8 grid items-start gap-6 lg:grid-cols-[minmax(0,1.25fr)_minmax(22rem,0.82fr)]">
         <div className="space-y-6">
         <div className="space-y-4">
-          <label className="flex min-h-24 cursor-pointer flex-col items-center justify-center rounded-3xl border border-dashed border-line bg-card px-4 text-center">
-            <span className="font-medium">{t.upload}</span>
-            <span className="mt-1 text-sm text-muted">{artNames.length > 0 ? artNames.join(" · ") : t.uploadHint}</span>
-            <input
-              className="sr-only"
-              type="file"
-              multiple
-              accept="application/pdf,image/png,image/jpeg,image/webp,image/svg+xml"
-              onChange={(event) => {
-                void onFiles(event.target.files);
-                event.target.value = "";
-              }}
-            />
-          </label>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="flex min-h-24 cursor-pointer flex-col items-center justify-center rounded-3xl border border-dashed border-line bg-card px-4 text-center">
+              <span className="font-medium">{t.logo}</span>
+              <span className="mt-1 text-sm text-muted">{t.logoHint}</span>
+              <input
+                className="sr-only"
+                type="file"
+                multiple
+                accept="application/pdf,image/png,image/jpeg,image/webp,image/svg+xml"
+                onChange={(event) => {
+                  void onFiles(event.target.files, "logo");
+                  event.target.value = "";
+                }}
+              />
+            </label>
+            <label className="flex min-h-24 cursor-pointer flex-col items-center justify-center rounded-3xl border border-dashed border-line bg-card px-4 text-center">
+              <span className="font-medium">{t.pattern}</span>
+              <span className="mt-1 text-sm text-muted">{t.patternHint}</span>
+              <input
+                className="sr-only"
+                type="file"
+                multiple
+                accept="application/pdf,image/png,image/jpeg,image/webp,image/svg+xml"
+                onChange={(event) => {
+                  void onFiles(event.target.files, "pattern");
+                  event.target.value = "";
+                }}
+              />
+            </label>
+          </div>
+          {logos.length + patterns.length > 0 ? (
+            <ul className="flex flex-wrap gap-2">
+              {logos.map((item, index) => (
+                <li key={`logo-${item.name}-${index}`} className="flex min-h-11 items-center gap-2 rounded-full border border-line bg-card pl-3 pr-1 text-sm">
+                  <span>{t.logo} · {item.name}</span>
+                  <button type="button" className="min-h-11 rounded-full px-3" onClick={() => setLogos((current) => current.filter((_, i) => i !== index))}>{t.remove}</button>
+                </li>
+              ))}
+              {patterns.map((item, index) => (
+                <li key={`pattern-${item.name}-${index}`} className="flex min-h-11 items-center gap-2 rounded-full border border-line bg-card pl-3 pr-1 text-sm">
+                  <span>{t.pattern} · {item.name}</span>
+                  <button type="button" className="min-h-11 rounded-full px-3" onClick={() => setPatterns((current) => current.filter((_, i) => i !== index))}>{t.remove}</button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
           {error ? <p className="border-l-4 border-pitanga pl-3 text-sm">{error}</p> : null}
           <div>
             <label className="block text-sm">
@@ -540,7 +630,7 @@ export function BlinkApp() {
             </p>
           ) : null}
 
-          {(art || draft.phrase.trim()) && baseLabels ? (
+          {(art || pattern || draft.phrase.trim()) && baseLabels ? (
             <div>
               <h2 className="font-display text-2xl">{t.colorsTitle}</h2>
               <p className="mt-1 text-sm text-muted">{t.colorsLead}</p>
@@ -589,7 +679,7 @@ export function BlinkApp() {
             </div>
           ) : null}
 
-          {(art || draft.phrase.trim()) && labels ? (
+          {(art || pattern || draft.phrase.trim()) && labels ? (
             <div>
               <h2 className="font-display text-2xl">{t.samplesTitle}</h2>
               <p className="mt-1 text-sm text-muted">{t.samplesLead}</p>
@@ -610,7 +700,7 @@ export function BlinkApp() {
                           top={cup.top}
                           bot={cup.bot}
                           heightMm={cup.height}
-                          cover={area ? area.h / cup.height : 0.6}
+                          cover={area ? (pattern ? 0.9 : area.h / cup.height) : 0.6}
                           spin={false}
                           className="h-32 w-full"
                         />
@@ -629,55 +719,105 @@ export function BlinkApp() {
           {chosen && area ? (
             <section className="overflow-hidden rounded-3xl border border-line bg-card">
             <div>
-              <div className="flex h-[32rem] items-end justify-center rounded-2xl bg-white">
-                <CupStage
+              <div className="h-[32rem] bg-white">
+                <Lineup
                   texture={chosen}
                   top={cup.top}
                   bot={cup.bot}
                   heightMm={cup.height}
-                  cover={area.h / cup.height}
+                  cover={pattern ? 0.9 : area.h / cup.height}
+                  otherTop={other.top}
+                  otherBot={other.bot}
+                  otherHeight={other.height}
+                  otherCover={pattern ? 0.9 : otherArea ? otherArea.h / other.height : 0.6}
+                  otherTexture={otherTexture}
+                  otherBody={right.cupTint}
                   spin={spin}
-                  mode={renderMode}
-                  drink="beer"
                   body={cupTint}
-                  lean="left"
+                  mode={renderMode}
                   shotsRef={shotsRef}
-                  className="h-full w-[34%] cursor-pointer"
+                  className="h-full w-full cursor-pointer"
                   onViews={(shots) => {
                     const title = draft.event ? `${cup.name} · ${draft.event}` : cup.name;
                     openPdf(canvasPdf(viewsSheet(title, t.angles, shots)));
                   }}
                 />
-                <div className="relative z-10 h-full w-80 shrink-0">
-                  <img
-                    src="/scale-bottle.jpg"
-                    alt={t.drink.beer}
-                    className="absolute w-auto max-w-none object-contain"
-                    style={{ height: "78%", bottom: "26%", left: 0 }}
-                  />
-                  <img
-                    src="/scale-can.jpg"
-                    alt={t.drink.soda}
-                    className="absolute w-auto max-w-none object-contain"
-                    style={{ height: "39%", bottom: "26%", right: 0 }}
-                  />
+              </div>
+              <div className="grid gap-3 bg-white px-3 py-3 sm:grid-cols-2">
+                <div className="rounded-2xl border border-line p-3">
+                  <label className="flex items-center gap-2 text-sm">
+                    <span className="text-muted">{t.drink.beer}</span>
+                    <select className="min-h-11 min-w-0 flex-1 rounded-xl border border-line bg-white px-2" value={cup.id} onChange={(event) => chooseCup(event.target.value)}>
+                      {CUPS.map((item) => (
+                        <option key={item.id} value={item.id}>{item.name} · {item.height} mm</option>
+                      ))}
+                    </select>
+                  </label>
+                  <p className="mt-2 text-xs text-muted">{draft.phrase.trim() || t.phraseHint}</p>
                 </div>
-                <CupStage
-                  texture={chosen}
-                  top={cup.top}
-                  bot={cup.bot}
-                  heightMm={cup.height}
-                  cover={area.h / cup.height}
-                  spin={spin}
-                  mode={renderMode}
-                  drink="soda"
-                  body={cupTint}
-                  lean="right"
-                  className="h-full w-[34%]"
-                />
+                <div className="rounded-2xl border border-line p-3">
+                  <label className="flex items-center gap-2 text-sm">
+                    <span className="text-muted">{t.drink.soda}</span>
+                    <select className="min-h-11 min-w-0 flex-1 rounded-xl border border-line bg-white px-2" value={other.id} onChange={(event) => setCompareId(event.target.value)}>
+                      {CUPS.map((item) => (
+                        <option key={item.id} value={item.id}>{item.name} · {item.height} mm</option>
+                      ))}
+                    </select>
+                  </label>
+                  <input
+                    className={`${control} mt-2`}
+                    maxLength={60}
+                    value={right.phrase}
+                    placeholder={t.phraseHint}
+                    onChange={(event) => setRight((current) => ({ ...current, phrase: event.target.value }))}
+                  />
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {FONTS.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        aria-pressed={right.font === item.id}
+                        onClick={() => setRight((current) => ({ ...current, font: item.id }))}
+                        className={`min-h-11 rounded-full px-3 text-sm ${right.font === item.id ? "bg-ink text-paper" : "bg-card"}`}
+                        style={{ fontFamily: item.css }}
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {SAMPLES.filter((item) => item.id !== "vetor").map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        aria-pressed={right.sample === item.id}
+                        onClick={() => setRight((current) => ({ ...current, sample: item.id }))}
+                        className={`min-h-11 rounded-full px-3 text-sm ${right.sample === item.id ? "bg-ink text-paper" : "bg-card"}`}
+                      >
+                        {t.sample[item.id].name}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <button type="button" className="min-h-11 rounded-full border border-line px-3 text-sm" onClick={() => setRight((current) => ({ ...current, tint: null, cupTint: null }))}>
+                      {t.original}
+                    </button>
+                    {STOCK.map((swatch) => (
+                      <button
+                        key={swatch.hex}
+                        type="button"
+                        aria-label={swatch.hex}
+                        className={`h-11 w-11 rounded-full border ${right.tint === swatch.hex || right.cupTint === swatch.hex ? "border-ink" : "border-line"}`}
+                        style={{ background: swatch.hex }}
+                        onClick={() => setRight((current) => (current.cupTint === null && current.tint !== null ? { ...current, cupTint: swatch.hex } : { ...current, tint: swatch.hex }))}
+                      />
+                    ))}
+                  </div>
+                  <p className="mt-1 text-xs text-muted">{t.inkLogo} / {t.inkCup}</p>
+                </div>
               </div>
               <p className="bg-white px-3 py-2 text-center text-sm">
-                {cup.name} {cup.height} mm · {t.drink.beer} 230 mm · {t.drink.soda} 115 mm
+                {cup.name} {cup.height} mm · {t.drink.beer} 230 mm · {t.drink.soda} 115 mm · {other.name} {other.height} mm
                 <span className="mt-0.5 block text-xs text-muted">{t.scaleHint}</span>
               </p>
               <p className="border-t border-line px-4 py-2 text-xs text-muted">{t.viewHint}</p>

@@ -62,6 +62,52 @@ function drawFit(ctx: CanvasRenderingContext2D, source: CanvasImageSource, cx: n
   ctx.drawImage(source, cx - dw / 2, cy - dh / 2, dw, dh);
 }
 
+function drawCover(
+  ctx: CanvasRenderingContext2D,
+  source: CanvasImageSource,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+) {
+  const [iw, ih] = sourceSize(source);
+  const scale = Math.max(w / Math.max(1, iw), h / Math.max(1, ih));
+  const dw = iw * scale;
+  const dh = ih * scale;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x, y, w, h);
+  ctx.clip();
+  ctx.drawImage(source, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
+  ctx.restore();
+}
+
+export function composePattern(images: CanvasImageSource[]): HTMLCanvasElement {
+  const canvas = document.createElement("canvas");
+  canvas.width = 1600;
+  canvas.height = 2000;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return canvas;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const band = canvas.height / Math.max(1, images.length);
+  images.forEach((image, index) => drawCover(ctx, image, 0, index * band, canvas.width, band));
+  return canvas;
+}
+
+export function composeLogos(images: CanvasImageSource[]): HTMLCanvasElement {
+  const canvas = document.createElement("canvas");
+  canvas.width = 1600;
+  canvas.height = 1600;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return canvas;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  images.forEach((image, index) => {
+    const x = ((index + 0.5) / images.length) * canvas.width;
+    drawFit(ctx, image, x, 800, images.length === 1 ? 1280 : 720);
+  });
+  return canvas;
+}
+
 export function composeArts(images: CanvasImageSource[]): HTMLCanvasElement {
   const canvas = document.createElement("canvas");
   canvas.width = 1600;
@@ -99,6 +145,7 @@ export function paintLabel(options: {
   inkCount: 1 | 2;
   fit?: "contain" | "cover" | "band" | "height";
   place?: "medida" | "cheio" | "margem" | "faixa" | "alto" | "chapado";
+  pattern?: CanvasImageSource | null;
 }): HTMLCanvasElement {
   const { area, ppm } = options;
   const canvas = document.createElement("canvas");
@@ -112,6 +159,7 @@ export function paintLabel(options: {
   } else {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
   }
+  if (options.pattern) drawCover(ctx, options.pattern, 0, 0, canvas.width, canvas.height);
   const title = options.title.trim();
   const place = options.place ?? "medida";
   const tune = {
@@ -453,7 +501,7 @@ export function angleSheet(rows: { name: string; labels: readonly string[]; shot
   canvas.height = 1754;
   const ctx = canvas.getContext("2d");
   if (!ctx) return canvas;
-  ctx.fillStyle = "#F3F1EE";
+  ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.fillStyle = "#1A120C";
   ctx.font = "600 28px Fraunces, serif";
@@ -470,7 +518,7 @@ export function angleSheet(rows: { name: string; labels: readonly string[]; shot
       const x = 48 + index * (cellW + gap);
       const y = top + 22;
       const photoH = cellH - 36;
-      ctx.fillStyle = "#f7f6f4";
+      ctx.fillStyle = "#ffffff";
       ctx.fillRect(x, y, cellW, photoH);
       const scale = Math.min(cellW / shot.width, photoH / shot.height);
       const dw = shot.width * scale;
@@ -490,7 +538,7 @@ export function viewsSheet(title: string, labels: readonly string[], shots: HTML
   canvas.height = 1754;
   const ctx = canvas.getContext("2d");
   if (!ctx) return canvas;
-  ctx.fillStyle = "#F3F1EE";
+  ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.fillStyle = "#1A120C";
   ctx.font = "600 28px Fraunces, serif";
