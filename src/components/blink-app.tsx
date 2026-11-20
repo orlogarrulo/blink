@@ -169,6 +169,8 @@ export function BlinkApp() {
   const [tracing, setTracing] = useState(false);
   const [tint, setTint] = useState<string | null>(null);
   const [cupTint, setCupTint] = useState<string | null>(null);
+  const [liquid, setLiquid] = useState<"none" | "beer" | "soda">("none");
+  const [rightLiquid, setRightLiquid] = useState<"none" | "beer" | "soda">("none");
   const [quote, setQuote] = useState<{ cupId: string; qty: number; unitKz: number; freightKz: number; lotKz: number } | null>(null);
   const [market, setMarket] = useState<Market>("KZ");
   const [lang, setLang] = useState<Lang>("pt");
@@ -680,6 +682,8 @@ export function BlinkApp() {
                   otherPattern={rightPattern}
                   spin={Boolean(art || pattern || rightArt || rightPattern) && spin}
                   body={cupTint}
+                  liquid={liquid}
+                  otherLiquid={rightLiquid}
                   mode={renderMode}
                   shotsRef={shotsRef}
                   className="absolute inset-0 h-full w-full cursor-pointer"
@@ -709,8 +713,8 @@ export function BlinkApp() {
                     <label className="flex min-h-11 cursor-pointer items-center justify-center rounded-xl border border-dashed border-line px-1 text-center text-xs">{t.pattern}<input className="sr-only" type="file" multiple accept="application/pdf,image/png,image/jpeg,image/webp,image/svg+xml" onChange={(event) => { void onFiles(event.target.files, "pattern", "beer"); event.target.value = ""; }} /></label>
                   </div>
                   <div className="mt-1 grid grid-cols-2 gap-1">
-                    <button type="button" className={`min-h-11 rounded-xl border px-1 text-xs ${cupTint === "#C47A32" ? "border-ink bg-amber-50" : "border-line"}`} onClick={() => setCupTint(cupTint === "#C47A32" ? null : "#C47A32")}>Cerveja</button>
-                    <button type="button" className={`min-h-11 rounded-xl border px-1 text-xs ${cupTint === "#2A0C08" ? "border-ink bg-red-50" : "border-line"}`} onClick={() => setCupTint(cupTint === "#2A0C08" ? null : "#2A0C08")}>Refrigerante</button>
+                    <button type="button" className={`min-h-11 rounded-xl border px-1 text-xs ${liquid === "beer" ? "border-ink bg-amber-50" : "border-line"}`} onClick={() => setLiquid(liquid === "beer" ? "none" : "beer")}>Cerveja</button>
+                    <button type="button" className={`min-h-11 rounded-xl border px-1 text-xs ${liquid === "soda" ? "border-ink bg-red-50" : "border-line"}`} onClick={() => setLiquid(liquid === "soda" ? "none" : "soda")}>Refrigerante</button>
                   </div>
                   <ul className="mt-1 space-y-1">
                     {logos.map((item, index) => (
@@ -778,8 +782,8 @@ export function BlinkApp() {
                     <label className="flex min-h-11 cursor-pointer items-center justify-center rounded-xl border border-dashed border-line px-1 text-center text-xs">{t.pattern}<input className="sr-only" type="file" multiple accept="application/pdf,image/png,image/jpeg,image/webp,image/svg+xml" onChange={(event) => { void onFiles(event.target.files, "pattern", "soda"); event.target.value = ""; }} /></label>
                   </div>
                   <div className="mt-1 grid grid-cols-2 gap-1">
-                    <button type="button" className={`min-h-11 rounded-xl border px-1 text-xs ${right.cupTint === "#C47A32" ? "border-ink bg-amber-50" : "border-line"}`} onClick={() => setRight((c) => ({ ...c, cupTint: c.cupTint === "#C47A32" ? null : "#C47A32" }))}>Cerveja</button>
-                    <button type="button" className={`min-h-11 rounded-xl border px-1 text-xs ${right.cupTint === "#2A0C08" ? "border-ink bg-red-50" : "border-line"}`} onClick={() => setRight((c) => ({ ...c, cupTint: c.cupTint === "#2A0C08" ? null : "#2A0C08" }))}>Refrigerante</button>
+                    <button type="button" className={`min-h-11 rounded-xl border px-1 text-xs ${rightLiquid === "beer" ? "border-ink bg-amber-50" : "border-line"}`} onClick={() => setRightLiquid(rightLiquid === "beer" ? "none" : "beer")}>Cerveja</button>
+                    <button type="button" className={`min-h-11 rounded-xl border px-1 text-xs ${rightLiquid === "soda" ? "border-ink bg-red-50" : "border-line"}`} onClick={() => setRightLiquid(rightLiquid === "soda" ? "none" : "soda")}>Refrigerante</button>
                   </div>
                   <ul className="mt-1 space-y-1">
                     {rightLogos.map((item, index) => (
