@@ -564,8 +564,18 @@ export function BlinkApp() {
       freightNote: `aéreo  ·  ${numbers.charge} ${item.name}`,
     });
     const turns = [0, Math.PI * 0.28, Math.PI * 0.5];
-    const solid = shotsRef.current?.(turns, side) ?? [];
-    const views = viewsSheet(item.name, t.angles.slice(0, 3), solid.length === 3 ? solid : []);
+    const solid = cupStills(
+      {
+        texture: wrapPrint(texture, motif, motif ? 0.9 : itemArea.h / item.height) ?? texture,
+        top: item.top,
+        bot: item.bot,
+        heightMm: item.height,
+        cover: motif ? 0.9 : itemArea.h / item.height,
+        body,
+      },
+      turns,
+    );
+    const views = viewsSheet(item.name, t.angles.slice(0, 3), solid);
     return [sheet, views];
   }
 
@@ -765,43 +775,27 @@ export function BlinkApp() {
               </div>
               <div className="grid grid-cols-2 gap-2 bg-white px-2 pb-3">
                 <div className="relative h-64 overflow-hidden rounded-2xl border border-line bg-white">
-                  <Lineup
+                  <CupView
                     texture={shown}
                     top={cup.top}
                     bot={cup.bot}
                     heightMm={cup.height}
                     cover={pattern ? 0.9 : area.h / cup.height}
-                    otherTop={other.top}
-                    otherBot={other.bot}
-                    otherHeight={other.height}
-                    otherCover={0.6}
-                    otherTexture={null}
-                    spin={Boolean(art || pattern) && spin}
                     body={cupTint}
-                    liquid={liquid}
-                    solo="left"
-                    mode={renderMode}
+                    spin={Boolean(art || pattern) && spin}
                     className="absolute inset-0 h-full w-full"
                   />
                   <span className="absolute bottom-2 left-2 rounded bg-white/80 px-2 py-0.5 text-xs text-ink">{t.cup1}</span>
                 </div>
                 <div className="relative h-64 overflow-hidden rounded-2xl border border-line bg-white">
-                  <Lineup
+                  <CupView
                     texture={otherTexture}
                     top={other.top}
                     bot={other.bot}
                     heightMm={other.height}
                     cover={rightPattern ? 0.9 : otherArea ? otherArea.h / other.height : 0.6}
-                    otherTop={cup.top}
-                    otherBot={cup.bot}
-                    otherHeight={cup.height}
-                    otherCover={0.6}
-                    otherTexture={null}
-                    spin={Boolean(rightArt || rightPattern) && spin}
                     body={right.cupTint}
-                    liquid={rightLiquid}
-                    solo="left"
-                    mode={renderMode}
+                    spin={Boolean(rightArt || rightPattern) && spin}
                     className="absolute inset-0 h-full w-full"
                   />
                   <span className="absolute bottom-2 left-2 rounded bg-white/80 px-2 py-0.5 text-xs text-ink">{t.cup2}</span>
