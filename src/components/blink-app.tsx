@@ -163,6 +163,7 @@ export function BlinkApp() {
     process: null,
   });
   const [spin, setSpin] = useState(true);
+  const [zoomedCup, setZoomedCup] = useState<string | null>(null);
   const [renderMode, setRenderMode] = useState<"frost" | "clear" | "studio">("frost");
   const [vectorLabel, setVectorLabel] = useState<HTMLCanvasElement | null>(null);
   const [tracing, setTracing] = useState(false);
@@ -551,7 +552,9 @@ export function BlinkApp() {
                 <button
                   type="button"
                   onClick={() => chooseCup(item.id)}
+                  onDoubleClick={() => setZoomedCup(item.id)}
                   className={`w-full rounded-3xl border bg-card px-2 pb-3 pt-2 text-left ${on ? "cup-on border-ink" : "border-line"}`}
+                  title="Duplo clique para ampliar o material"
                 >
                   <CupView
                     texture={on && chosen ? chosen : null}
@@ -970,6 +973,33 @@ export function BlinkApp() {
           ) : null}
         </div>
       </div>
+    
+      {zoomedCup && (() => {
+        const item = CUPS.find(c => c.id === zoomedCup);
+        if (!item) return null;
+        const win = areaFor(item, processesFor(item).includes(process) ? process : processesFor(item)[0]);
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setZoomedCup(null)}>
+            <div className="relative max-h-[90vh] w-full max-w-2xl rounded-3xl bg-white p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+              <button type="button" className="absolute right-4 top-4 text-sm text-muted" onClick={() => setZoomedCup(null)}>Fechar</button>
+              <h3 className="font-display text-xl">{item.name} · {item.height} mm</h3>
+              <p className="mt-1 text-sm text-muted">Material em detalhe. Clica fora ou em Fechar para voltar.</p>
+              <div className="mt-4 h-[60vh] rounded-2xl bg-white">
+                <CupView
+                  texture={null}
+                  body={cupTint}
+                  top={item.top}
+                  bot={item.bot}
+                  heightMm={item.height}
+                  cover={win ? win.h / item.height : 0.6}
+                  spin={true}
+                  className="h-full w-full"
+                />
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </main>
   );
 }
