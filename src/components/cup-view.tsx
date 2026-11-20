@@ -7,16 +7,17 @@ type Props = {
   heightMm: number;
   cover: number;
   body?: string | null;
+  liquid?: "none" | "beer" | "soda";
   spin: boolean;
   className?: string;
 };
 
-export function CupView({ texture, top, bot, heightMm, cover, body = null, spin, className }: Props) {
+export function CupView({ texture, top, bot, heightMm, cover, body = null, liquid = "none", spin, className }: Props) {
   const ref = useRef<HTMLCanvasElement>(null);
   const angle = useRef(0);
   const drag = useRef<{ x: number; a: number } | null>(null);
-  const live = useRef({ texture, top, bot, heightMm, cover, body, spin });
-  live.current = { texture, top, bot, heightMm, cover, body, spin };
+  const live = useRef({ texture, top, bot, heightMm, cover, body, liquid, spin });
+  live.current = { texture, top, bot, heightMm, cover, body, liquid, spin };
 
   useEffect(() => {
     const canvas = ref.current;
@@ -90,6 +91,7 @@ type CupDraw = {
   heightMm: number;
   cover: number;
   body?: string | null;
+  liquid?: "none" | "beer" | "soda";
 };
 
 function drawCup(
@@ -169,6 +171,28 @@ function drawCup(
       ctx.fillStyle = sheen;
       ctx.fillRect(cx - topR, topCy, topR * 2, bodyH);
       ctx.restore();
+
+      if (spec.liquid && spec.liquid !== "none") {
+        const liqLevel = spec.liquid === "beer" ? 0.82 : 0.88;
+        const liqTop = topCy + bodyH * (1 - liqLevel);
+        const liqColor = spec.liquid === "beer" ? "rgba(232,168,32,0.85)" : "rgba(20,8,6,0.9)";
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(cx - topR * 0.95, liqTop);
+        ctx.lineTo(cx + topR * 0.95, liqTop);
+        ctx.lineTo(cx + botR * 0.98, topCy + bodyH - 2);
+        ctx.lineTo(cx - botR * 0.98, topCy + bodyH - 2);
+        ctx.closePath();
+        ctx.fillStyle = liqColor;
+        ctx.fill();
+        if (spec.liquid === "beer") {
+          ctx.fillStyle = "rgba(255,247,238,0.95)";
+          ctx.beginPath();
+          ctx.ellipse(cx, liqTop, topR * 0.88, 6, 0, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+      }
 
       if (spec.texture) {
         const y0 = topCy + band0 * bodyH;
