@@ -572,6 +572,7 @@ export function BlinkApp() {
         heightMm: item.height,
         cover: motif ? 0.9 : itemArea.h / item.height,
         body,
+        liquid: side === "beer" ? liquid : rightLiquid,
       },
       turns,
     );
