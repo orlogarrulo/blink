@@ -722,7 +722,9 @@ export function wrapPrint(source: HTMLCanvasElement | null, motif: HTMLCanvasEle
   if (source) {
     const box = inkBox(source);
     if (box) {
-      const copies = box.w / box.h > 2.4 ? 2 : box.w / box.h < 0.85 ? 4 : 3;
+      const aspect = box.w / box.h;
+      const isSmall = box.w < 200 && box.h < 200;
+      const copies = isSmall ? 3 : aspect > 2.4 ? 2 : aspect < 0.85 ? 4 : 3;
       const slot = wrap.width / copies;
       for (let i = 0; i < copies; i += 1) {
         const scale = Math.min((slot * 0.82) / box.w, (band * 0.82) / box.h);
