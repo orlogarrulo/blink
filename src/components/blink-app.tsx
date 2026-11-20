@@ -170,6 +170,7 @@ export function BlinkApp() {
   const [tint, setTint] = useState<string | null>(null);
   const [cupTint, setCupTint] = useState<string | null>(null);
   const [liquid, setLiquid] = useState<"none" | "beer" | "soda">("none");
+  const [soloCard, setSoloCard] = useState<"beer" | "soda" | null>(null);
   const [rightLiquid, setRightLiquid] = useState<"none" | "beer" | "soda">("none");
   const [quote, setQuote] = useState<{ cupId: string; qty: number; unitKz: number; freightKz: number; lotKz: number } | null>(null);
   const [market, setMarket] = useState<Market>("KZ");
@@ -751,6 +752,11 @@ export function BlinkApp() {
                   mode={renderMode}
                   shotsRef={shotsRef}
                   className="absolute inset-0 h-full w-full cursor-pointer"
+                  onDoubleClick={(e) => {
+                    const rect = (e.target as HTMLElement).getBoundingClientRect();
+                    const x = e.clientX - rect.left;
+                    setSoloCard(x < rect.width / 2 ? "beer" : "soda");
+                  }}
                   onViews={(shots) => {
                     const title = draft.event ? `${cup.name} · ${draft.event}` : cup.name;
                     openPdf(canvasPdf(viewsSheet(title, t.angles, shots)));
@@ -1115,6 +1121,47 @@ export function BlinkApp() {
                   spin={true}
                   className="h-full w-full"
                 />
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+      {soloCard && (() => {
+        const isBeer = soloCard === "beer";
+        const item = isBeer ? cup : other;
+        const itemTexture = isBeer ? shown : otherTexture;
+        const itemTint = isBeer ? cupTint : right.cupTint;
+        const itemLiquid = isBeer ? liquid : rightLiquid;
+        const itemPattern = isBeer ? pattern : rightPattern;
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setSoloCard(null)}>
+            <div className="relative max-h-[90vh] w-full max-w-md overflow-y-auto rounded-3xl bg-white p-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+              <h3 className="font-display text-lg">{item.name} · {item.height} mm</h3>
+              <p className="text-xs text-muted">Toca para pausar, solta para continuar</p>
+              <div className="relative mt-3 h-80 rounded-2xl bg-white">
+                <Lineup
+                  texture={itemTexture}
+                  top={item.top}
+                  bot={item.bot}
+                  heightMm={item.height}
+                  cover={itemPattern ? 0.9 : 0.6}
+                  otherTop={item.top}
+                  otherBot={item.bot}
+                  otherHeight={item.height}
+                  otherCover={0.6}
+                  otherTexture={null}
+                  patternArt={itemPattern}
+                  spin={true}
+                  body={itemTint}
+                  liquid={itemLiquid}
+                  solo="left"
+                  mode={renderMode}
+                  className="absolute inset-0 h-full w-full"
+                />
+              </div>
+              <div className="mt-3 flex gap-2">
+                <button type="button" className="min-h-11 flex-1 rounded-xl bg-ink text-paper" onClick={() => setSoloCard(null)}>Confirmar</button>
+                <button type="button" className="min-h-11 rounded-xl border border-line px-4" onClick={() => setSoloCard(null)}>Fechar</button>
               </div>
             </div>
           </div>
