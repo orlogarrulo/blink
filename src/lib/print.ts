@@ -376,16 +376,16 @@ export function tintCanvas(source: HTMLCanvasElement, hex: string, process: Proc
     data[i] = tr;
     data[i + 1] = tg;
     data[i + 2] = tb;
-    // Make near-white source pixels transparent (removes white background artifacts)
-    const srcLum = (r * 0.299 + g * 0.587 + b * 0.114) / 255;
-    if (srcLum > 0.92) {
+    // Remove white/near-white background (logos often have white bg that shows as spots)
+    const isWhite = r > 230 && g > 230 && b > 230;
+    if (isWhite || lum > 0.88) {
       data[i + 3] = 0;
     } else {
       const targetLum = (tr * 0.299 + tg * 0.587 + tb * 0.114) / 255;
       if (targetLum > 0.85) {
         data[i + 3] = alpha;
       } else {
-        const edge = Math.min(1, ink * 1.15);
+        const edge = Math.min(1, ink * 1.2);
         data[i + 3] = Math.round(alpha * edge);
       }
     }
