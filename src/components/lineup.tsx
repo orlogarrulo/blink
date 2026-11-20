@@ -500,20 +500,21 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
           const bodyMat = (item.group.children[0] as { material: { transmission: number } }).material;
           if (kind === "beer") {
             mat.map = beerTex;
-            mat.color.set(0xffffff);
+            mat.color.set(0xe8a820);
             mat.transmission = 0.0;
             mat.roughness = 0.12;
             mat.opacity = 1;
             mat.transparent = false;
             mat.needsUpdate = true;
             foamMat.map = foamTex;
+            foamMat.color.set(0xfff7ee);
             foamMat.needsUpdate = true;
             bodyMat.transmission = 0.55;
             item.liquid.visible = true;
             item.foam.visible = true;
           } else if (kind === "soda") {
             mat.map = sodaTex;
-            mat.color.set(0xffffff);
+            mat.color.set(0x140806);
             mat.transmission = 0.0;
             mat.roughness = 0.15;
             mat.opacity = 1;
