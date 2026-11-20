@@ -313,6 +313,10 @@ export const STOCK = [
   { name: "485 C", hex: "#DA291C" },
   { name: "186 C", hex: "#C8102E" },
   { name: "167 C", hex: "#BE531C" },
+  { name: "Verde 355 C", hex: "#009739" },
+  { name: "Verde Claro", hex: "#00B14F" },
+  { name: "Azul 280 C", hex: "#012169" },
+  { name: "Azul Claro", hex: "#003399" },
   { name: "Black", hex: "#1A120C" },
   { name: "White", hex: "#F7F4EF" },
 ];
