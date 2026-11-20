@@ -744,7 +744,7 @@ export function BlinkApp() {
                   otherBody={right.cupTint}
                   patternArt={pattern}
                   otherPattern={rightPattern}
-                  spin={Boolean(art || pattern || rightArt || rightPattern) && spin}
+                  spin={false}
                   body={cupTint}
                   liquid={liquid}
                   otherLiquid={rightLiquid}
