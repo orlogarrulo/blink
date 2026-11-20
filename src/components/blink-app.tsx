@@ -562,16 +562,9 @@ export function BlinkApp() {
       priceLine: `${unitMoney.primary} (${unitMoney.secondary}) / un  ·  ${lotMoney.primary} (${lotMoney.secondary})`,
       freightNote: `aéreo  ·  ${numbers.charge} ${item.name}`,
     });
-    // Generate mockups from the selected filters (logo, color, beer/soda)
-    const mockups = await generateMockups({
-      logo: printLabel,
-      bodyColor: body,
-      liquid: side === "beer" ? liquid : rightLiquid,
-      top: item.top,
-      bot: item.bot,
-      height: item.height,
-    });
-    const views = viewsSheet(item.name, t.angles.slice(0, 3), mockups);
+    const turns = [0, Math.PI * 0.28, Math.PI * 0.5];
+    const solid = shotsRef.current?.(turns, side) ?? [];
+    const views = viewsSheet(item.name, t.angles.slice(0, 3), solid.length === 3 ? solid : []);
     return [sheet, views];
   }
 
