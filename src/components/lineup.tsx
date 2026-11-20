@@ -50,6 +50,15 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
     void (async () => {
       const THREE = await import("three");
       const { RoomEnvironment } = await import("three/addons/environments/RoomEnvironment.js");
+      const texLoader = new THREE.TextureLoader();
+      const loadTex = (url: string) => new Promise<InstanceType<typeof THREE.Texture>>((resolve) => {
+        texLoader.load(url, (t) => { t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; resolve(t); }, undefined, () => resolve(new THREE.Texture()));
+      });
+      const [beerTex, foamTex, sodaTex] = await Promise.all([
+        loadTex("/textures/beer.jpg"),
+        loadTex("/textures/foam.jpg"),
+        loadTex("/textures/soda.jpg"),
+      ]);
       if (stop) return;
       const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
       renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
@@ -470,23 +479,24 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
         // Update liquid type
         const setLiquid = (item: { liquid: InstanceType<typeof THREE.Mesh>; foam: InstanceType<typeof THREE.Mesh> }, kind: "none" | "beer" | "soda") => {
           const mat = item.liquid.material as InstanceType<typeof THREE.MeshPhysicalMaterial>;
+          const foamMat = item.foam.material as InstanceType<typeof THREE.MeshStandardMaterial>;
           if (kind === "beer") {
-            mat.color.set(0xe8a820);
-            mat.transmission = 0.35;
-            mat.roughness = 0.04;
-            mat.attenuationColor.set(0xd4940a);
-            mat.attenuationDistance = 18;
-            mat.opacity = 0.95;
+            mat.map = beerTex;
+            mat.color.set(0xffffff);
+            mat.transmission = 0.15;
+            mat.roughness = 0.08;
+            mat.opacity = 1;
             mat.needsUpdate = true;
+            foamMat.map = foamTex;
+            foamMat.needsUpdate = true;
             item.liquid.visible = true;
             item.foam.visible = true;
           } else if (kind === "soda") {
-            mat.color.set(0x140806);
-            mat.transmission = 0.15;
-            mat.roughness = 0.05;
-            mat.attenuationColor.set(0x080201);
-            mat.attenuationDistance = 8;
-            mat.opacity = 0.92;
+            mat.map = sodaTex;
+            mat.color.set(0xffffff);
+            mat.transmission = 0.05;
+            mat.roughness = 0.1;
+            mat.opacity = 1;
             mat.needsUpdate = true;
             item.liquid.visible = true;
             item.foam.visible = false;
