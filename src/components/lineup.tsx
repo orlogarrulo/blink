@@ -84,17 +84,19 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
         for (let i = 0; i <= 40; i += 1) outer.push(new THREE.Vector2(outerR(i / 40), (i / 40) * height));
         const geo = new THREE.LatheGeometry(outer, 96);
         const mat = new THREE.MeshPhysicalMaterial({
-          color: spec.body || 0x1a5c3a,
-          roughness: 0.18,
-          metalness: 0.02,
-          transmission: spec.body ? 0.04 : 0.08,
-          thickness: wall * 2.4,
-          ior: 1.5,
-          clearcoat: 0.85,
-          clearcoatRoughness: 0.12,
-          envMapIntensity: 1.1,
-          sheen: 0.25,
-          sheenRoughness: 0.4,
+          color: spec.body || 0xffffff,
+          roughness: 0.12,
+          metalness: 0,
+          transmission: spec.body ? 0.35 : 0.78,
+          thickness: wall * 2.2,
+          ior: 1.49,
+          clearcoat: 0.95,
+          clearcoatRoughness: 0.08,
+          envMapIntensity: 1.0,
+          attenuationColor: new THREE.Color(0xf4f4f2),
+          attenuationDistance: 40,
+          sheen: 0.15,
+          sheenRoughness: 0.35,
           sheenColor: new THREE.Color(0xffffff),
         });
         const mesh = new THREE.Mesh(geo, mat);
@@ -102,14 +104,16 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
         const group = new THREE.Group();
         group.add(mesh);
         const rim = new THREE.Mesh(
-          new THREE.TorusGeometry(topR * 0.99, Math.max(0.45, topR * 0.022), 12, 64),
+          new THREE.TorusGeometry(topR * 0.985, Math.max(0.35, topR * 0.018), 10, 64),
           new THREE.MeshPhysicalMaterial({
-            color: spec.body || 0x1a5c3a,
-            roughness: 0.22,
+            color: spec.body || 0xffffff,
+            roughness: 0.14,
             metalness: 0,
-            clearcoat: 0.4,
-            clearcoatRoughness: 0.3,
-            transmission: 0.02,
+            clearcoat: 0.7,
+            clearcoatRoughness: 0.15,
+            transmission: 0.55,
+            thickness: 0.8,
+            ior: 1.49,
           }),
         );
         rim.rotation.x = Math.PI / 2;
@@ -426,9 +430,9 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
           beer.group.userData.mode = spec.mode;
           const apply = (group: typeof beer.group) => {
             const mat = (group.children[0] as { material: { transmission: number; roughness: number; clearcoat: number } }).material;
-            mat.transmission = spec.mode === "clear" ? 0.72 : spec.mode === "studio" ? 0.04 : 0.18;
-            mat.roughness = spec.mode === "studio" ? 0.42 : 0.16;
-            mat.clearcoat = spec.mode === "studio" ? 0.35 : 1;
+            mat.transmission = spec.mode === "clear" ? 0.85 : spec.mode === "studio" ? 0.45 : 0.72;
+            mat.roughness = spec.mode === "studio" ? 0.28 : 0.12;
+            mat.clearcoat = spec.mode === "studio" ? 0.6 : 0.95;
           };
           apply(beer.group);
           apply(soda.group);
@@ -436,13 +440,13 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
         if (beer.group.userData.tint !== tint) {
           beer.group.userData.tint = tint;
           const mat = (beer.group.children[0] as { material: { color: { set: (v: string | number) => void } } }).material;
-          mat.color.set(tint || 0x1a5c3a);
+          mat.color.set(tint || 0xffffff);
         }
         const otherTint = spec.otherBody || "";
         if (soda.group.userData.tint !== otherTint) {
           soda.group.userData.tint = otherTint;
           const mat2 = (soda.group.children[0] as { material: { color: { set: (v: string | number) => void } } }).material;
-          mat2.color.set(otherTint || 0x1a5c3a);
+          mat2.color.set(otherTint || 0xffffff);
         }
         const texKey = `${spec.texture ? 1 : 0}:${spec.otherTexture ? 1 : 0}:${spec.patternArt ? 1 : 0}:${spec.otherPattern ? 1 : 0}:${spec.cover}:${spec.otherCover}`;
         if (beer.group.userData.tex !== spec.texture || soda.group.userData.tex !== spec.otherTexture || beer.group.userData.pat !== spec.patternArt || beer.group.userData.opat !== spec.otherPattern || beer.group.userData.key !== texKey) {
