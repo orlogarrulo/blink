@@ -149,6 +149,7 @@ export function BlinkApp() {
   const pattern = useMemo(() => (patterns.length > 0 ? composePattern(patterns.map((item) => item.image)) : null), [patterns]);
   const [error, setError] = useState("");
   const [compareId, setCompareId] = useState("ECO12");
+  const [compareQty, setCompareQty] = useState(400);
   const [right, setRight] = useState<{ phrase: string; font: FontId; sample: SampleId | null; tint: string | null; cupTint: string | null }>({
     phrase: "",
     font: "outfit",
@@ -163,7 +164,6 @@ export function BlinkApp() {
   const [tracing, setTracing] = useState(false);
   const [tint, setTint] = useState<string | null>(null);
   const [cupTint, setCupTint] = useState<string | null>(null);
-  const [inkTarget, setInkTarget] = useState<"logo" | "cup">("logo");
   const [quote, setQuote] = useState<{ cupId: string; qty: number; unitKz: number; freightKz: number; lotKz: number } | null>(null);
   const [market, setMarket] = useState<Market>("KZ");
   const [lang, setLang] = useState<Lang>("pt");
@@ -584,32 +584,6 @@ export function BlinkApp() {
             </ul>
           ) : null}
           {error ? <p className="border-l-4 border-pitanga pl-3 text-sm">{error}</p> : null}
-          <div>
-            <label className="block text-sm">
-              <span className="text-muted">{t.phraseTitle}</span>
-              <input
-                className={`${control} mt-1`}
-                maxLength={60}
-                value={draft.phrase}
-                placeholder={t.phraseHint}
-                onChange={(event) => patch({ phrase: event.target.value })}
-              />
-            </label>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {FONTS.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  aria-pressed={draft.font === item.id}
-                  onClick={() => patch({ font: item.id })}
-                  className={`min-h-11 rounded-full px-4 text-sm ${draft.font === item.id ? "bg-ink text-paper" : "bg-card"}`}
-                  style={{ fontFamily: item.css }}
-                >
-                  {item.label}
-                </button>
-              ))}
-            </div>
-          </div>
           <div className="flex flex-wrap gap-2">
             {processesFor(cup).map((item) => (
               <button
@@ -628,55 +602,6 @@ export function BlinkApp() {
               {cup.measured ? ` · ${cup.height} × ${t.mouth} ${cup.top} × ${t.base} ${cup.bot} mm` : ` · ${t.unmeasured}`}
               {` · ${t.window} ${area.w} × ${area.h} mm`}
             </p>
-          ) : null}
-
-          {(art || pattern || draft.phrase.trim()) && baseLabels ? (
-            <div>
-              <h2 className="font-display text-2xl">{t.colorsTitle}</h2>
-              <p className="mt-1 text-sm text-muted">{t.colorsLead}</p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {(["logo", "cup"] as const).map((id) => (
-                  <button
-                    key={id}
-                    type="button"
-                    aria-pressed={inkTarget === id}
-                    onClick={() => setInkTarget(id)}
-                    className={`min-h-11 rounded-full px-4 text-sm ${inkTarget === id ? "bg-ink text-paper" : "bg-card"}`}
-                  >
-                    {id === "logo" ? t.inkLogo : t.inkCup}
-                  </button>
-                ))}
-              </div>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => (inkTarget === "cup" ? setCupTint(null) : setTint(null))}
-                  className={`min-h-11 rounded-full border px-4 text-sm ${(inkTarget === "cup" ? cupTint : tint) === null ? "border-ink" : "border-line bg-card"}`}
-                >
-                  {t.original}
-                </button>
-                {fileColors.map((hex) => (
-                  <button
-                    key={`file-${hex}`}
-                    type="button"
-                    aria-label={`${t.fileColor} ${hex}`}
-                    onClick={() => (inkTarget === "cup" ? setCupTint(hex) : setTint(hex))}
-                    className={`h-11 w-11 rounded-full border ${(inkTarget === "cup" ? cupTint : tint) === hex ? "border-ink ring-2 ring-ink" : "border-line"}`}
-                    style={{ background: hex }}
-                  />
-                ))}
-                {STOCK.map((swatch) => (
-                  <button
-                    key={swatch.name}
-                    type="button"
-                    aria-label={swatch.hex}
-                    onClick={() => (inkTarget === "cup" ? setCupTint(swatch.hex) : setTint(swatch.hex))}
-                    className={`h-11 w-11 rounded-full border ${(inkTarget === "cup" ? cupTint : tint) === swatch.hex ? "border-ink ring-2 ring-ink" : "border-line"}`}
-                    style={{ background: swatch.hex }}
-                  />
-                ))}
-              </div>
-            </div>
           ) : null}
 
           {(art || pattern || draft.phrase.trim()) && labels ? (
@@ -732,6 +657,7 @@ export function BlinkApp() {
                   otherCover={pattern ? 0.9 : otherArea ? otherArea.h / other.height : 0.6}
                   otherTexture={otherTexture}
                   otherBody={right.cupTint}
+                  patternArt={pattern}
                   spin={spin}
                   body={cupTint}
                   mode={renderMode}
@@ -743,22 +669,52 @@ export function BlinkApp() {
                   }}
                 />
               </div>
-              <div className="grid gap-3 bg-white px-3 py-3 sm:grid-cols-2">
-                <div className="rounded-2xl border border-line p-3">
-                  <label className="flex items-center gap-2 text-sm">
-                    <span className="text-muted">{t.drink.beer}</span>
-                    <select className="min-h-11 min-w-0 flex-1 rounded-xl border border-line bg-white px-2" value={cup.id} onChange={(event) => chooseCup(event.target.value)}>
+              <div className="grid grid-cols-2 items-start gap-2 bg-white px-2 py-3">
+                <div className="min-w-0 rounded-2xl border border-line p-2">
+                  <label className="flex flex-col gap-1 text-xs text-muted">
+                    {t.drink.beer}
+                    <select className="min-h-11 w-full rounded-xl border border-line bg-white px-2 text-sm text-ink" value={cup.id} onChange={(event) => chooseCup(event.target.value)}>
                       {CUPS.map((item) => (
                         <option key={item.id} value={item.id}>{item.name} · {item.height} mm</option>
                       ))}
                     </select>
                   </label>
-                  <p className="mt-2 text-xs text-muted">{draft.phrase.trim() || t.phraseHint}</p>
+                  <input
+                    className={`${control} mt-2`}
+                    maxLength={60}
+                    value={draft.phrase}
+                    placeholder={t.phraseHint}
+                    onChange={(event) => patch({ phrase: event.target.value })}
+                  />
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {FONTS.map((item) => (
+                      <button key={item.id} type="button" aria-pressed={draft.font === item.id} onClick={() => patch({ font: item.id })} className={`min-h-11 rounded-full px-3 text-sm ${draft.font === item.id ? "bg-ink text-paper" : "bg-card"}`} style={{ fontFamily: item.css }}>{item.label}</button>
+                    ))}
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {SAMPLES.filter((item) => item.id !== "vetor").map((item) => (
+                      <button key={item.id} type="button" aria-pressed={draft.sample === item.id} onClick={() => patch({ sample: item.id })} className={`min-h-11 rounded-full px-2 text-xs ${draft.sample === item.id ? "bg-ink text-paper" : "bg-card"}`}>{t.sample[item.id].name}</button>
+                    ))}
+                  </div>
+                  <p className="mt-2 text-xs text-muted">{t.inkLogo}</p>
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    <button type="button" className={`min-h-11 rounded-full border px-3 text-xs ${tint === null ? "border-ink" : "border-line"}`} onClick={() => setTint(null)}>{t.original}</button>
+                    {STOCK.map((swatch) => (
+                      <button key={`l-${swatch.hex}`} type="button" aria-label={swatch.hex} className={`h-9 w-9 rounded-full border ${tint === swatch.hex ? "border-ink ring-2 ring-ink" : "border-line"}`} style={{ background: swatch.hex }} onClick={() => setTint(swatch.hex)} />
+                    ))}
+                  </div>
+                  <p className="mt-2 text-xs text-muted">{t.inkCup}</p>
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    <button type="button" className={`min-h-11 rounded-full border px-3 text-xs ${cupTint === null ? "border-ink" : "border-line"}`} onClick={() => setCupTint(null)}>{t.original}</button>
+                    {STOCK.map((swatch) => (
+                      <button key={`c-${swatch.hex}`} type="button" aria-label={swatch.hex} className={`h-9 w-9 rounded-full border ${cupTint === swatch.hex ? "border-ink ring-2 ring-ink" : "border-line"}`} style={{ background: swatch.hex }} onClick={() => setCupTint(swatch.hex)} />
+                    ))}
+                  </div>
                 </div>
-                <div className="rounded-2xl border border-line p-3">
-                  <label className="flex items-center gap-2 text-sm">
-                    <span className="text-muted">{t.drink.soda}</span>
-                    <select className="min-h-11 min-w-0 flex-1 rounded-xl border border-line bg-white px-2" value={other.id} onChange={(event) => setCompareId(event.target.value)}>
+                <div className="min-w-0 rounded-2xl border border-line p-2">
+                  <label className="flex flex-col gap-1 text-xs text-muted">
+                    {t.drink.soda}
+                    <select className="min-h-11 w-full rounded-xl border border-line bg-white px-2 text-sm text-ink" value={other.id} onChange={(event) => setCompareId(event.target.value)}>
                       {CUPS.map((item) => (
                         <option key={item.id} value={item.id}>{item.name} · {item.height} mm</option>
                       ))}
@@ -771,49 +727,66 @@ export function BlinkApp() {
                     placeholder={t.phraseHint}
                     onChange={(event) => setRight((current) => ({ ...current, phrase: event.target.value }))}
                   />
-                  <div className="mt-2 flex flex-wrap gap-2">
+                  <div className="mt-2 flex flex-wrap gap-1">
                     {FONTS.map((item) => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        aria-pressed={right.font === item.id}
-                        onClick={() => setRight((current) => ({ ...current, font: item.id }))}
-                        className={`min-h-11 rounded-full px-3 text-sm ${right.font === item.id ? "bg-ink text-paper" : "bg-card"}`}
-                        style={{ fontFamily: item.css }}
-                      >
-                        {item.label}
-                      </button>
+                      <button key={item.id} type="button" aria-pressed={right.font === item.id} onClick={() => setRight((current) => ({ ...current, font: item.id }))} className={`min-h-11 rounded-full px-3 text-sm ${right.font === item.id ? "bg-ink text-paper" : "bg-card"}`} style={{ fontFamily: item.css }}>{item.label}</button>
                     ))}
                   </div>
-                  <div className="mt-2 flex flex-wrap gap-2">
+                  <div className="mt-2 flex flex-wrap gap-1">
                     {SAMPLES.filter((item) => item.id !== "vetor").map((item) => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        aria-pressed={right.sample === item.id}
-                        onClick={() => setRight((current) => ({ ...current, sample: item.id }))}
-                        className={`min-h-11 rounded-full px-3 text-sm ${right.sample === item.id ? "bg-ink text-paper" : "bg-card"}`}
-                      >
-                        {t.sample[item.id].name}
-                      </button>
+                      <button key={item.id} type="button" aria-pressed={right.sample === item.id} onClick={() => setRight((current) => ({ ...current, sample: item.id }))} className={`min-h-11 rounded-full px-2 text-xs ${right.sample === item.id ? "bg-ink text-paper" : "bg-card"}`}>{t.sample[item.id].name}</button>
                     ))}
                   </div>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    <button type="button" className="min-h-11 rounded-full border border-line px-3 text-sm" onClick={() => setRight((current) => ({ ...current, tint: null, cupTint: null }))}>
-                      {t.original}
-                    </button>
+                  <p className="mt-2 text-xs text-muted">{t.inkLogo}</p>
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    <button type="button" className={`min-h-11 rounded-full border px-3 text-xs ${right.tint === null ? "border-ink" : "border-line"}`} onClick={() => setRight((current) => ({ ...current, tint: null }))}>{t.original}</button>
                     {STOCK.map((swatch) => (
-                      <button
-                        key={swatch.hex}
-                        type="button"
-                        aria-label={swatch.hex}
-                        className={`h-11 w-11 rounded-full border ${right.tint === swatch.hex || right.cupTint === swatch.hex ? "border-ink" : "border-line"}`}
-                        style={{ background: swatch.hex }}
-                        onClick={() => setRight((current) => (current.cupTint === null && current.tint !== null ? { ...current, cupTint: swatch.hex } : { ...current, tint: swatch.hex }))}
-                      />
+                      <button key={`rl-${swatch.hex}`} type="button" aria-label={swatch.hex} className={`h-9 w-9 rounded-full border ${right.tint === swatch.hex ? "border-ink ring-2 ring-ink" : "border-line"}`} style={{ background: swatch.hex }} onClick={() => setRight((current) => ({ ...current, tint: swatch.hex }))} />
                     ))}
                   </div>
-                  <p className="mt-1 text-xs text-muted">{t.inkLogo} / {t.inkCup}</p>
+                  <p className="mt-2 text-xs text-muted">{t.inkCup}</p>
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    <button type="button" className={`min-h-11 rounded-full border px-3 text-xs ${right.cupTint === null ? "border-ink" : "border-line"}`} onClick={() => setRight((current) => ({ ...current, cupTint: null }))}>{t.original}</button>
+                    {STOCK.map((swatch) => (
+                      <button key={`rc-${swatch.hex}`} type="button" aria-label={swatch.hex} className={`h-9 w-9 rounded-full border ${right.cupTint === swatch.hex ? "border-ink ring-2 ring-ink" : "border-line"}`} style={{ background: swatch.hex }} onClick={() => setRight((current) => ({ ...current, cupTint: swatch.hex }))} />
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 gap-2 bg-white px-2 pb-3 sm:grid-cols-2">
+                <div className="rounded-2xl border border-line p-3">
+                  <label className="block text-xs text-muted">
+                    {t.drink.beer}
+                    <select className="mt-1 min-h-11 w-full rounded-xl border border-line bg-white px-2 text-sm text-ink" value={cup.id} onChange={(event) => chooseCup(event.target.value)}>
+                      {CUPS.map((item) => (
+                        <option key={item.id} value={item.id}>{item.name}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="mt-2 block text-xs text-muted">
+                    {t.qty}
+                    <input className="mt-1 min-h-11 w-full rounded-xl border border-line bg-white px-3 text-sm text-ink" type="number" min={1} inputMode="numeric" value={draft.qty || ""} onChange={(event) => patch({ qty: Math.max(0, Math.floor(Number(event.target.value) || 0)) })} />
+                  </label>
+                  <p className="mt-2 text-sm">{liveQuote(cup, draft.qty).charge.toLocaleString(locale)} · {liveQuote(cup, draft.qty).boxes} {t.boxes}</p>
+                  <p className="text-sm"><SheetMoney kz={liveQuote(cup, draft.qty).finalUnit} /> {t.perUnit}</p>
+                  <p className="font-medium"><SheetMoney kz={liveQuote(cup, draft.qty).lot} /> {t.inLot}</p>
+                </div>
+                <div className="rounded-2xl border border-line p-3">
+                  <label className="block text-xs text-muted">
+                    {t.drink.soda}
+                    <select className="mt-1 min-h-11 w-full rounded-xl border border-line bg-white px-2 text-sm text-ink" value={other.id} onChange={(event) => setCompareId(event.target.value)}>
+                      {CUPS.map((item) => (
+                        <option key={item.id} value={item.id}>{item.name}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="mt-2 block text-xs text-muted">
+                    {t.qty}
+                    <input className="mt-1 min-h-11 w-full rounded-xl border border-line bg-white px-3 text-sm text-ink" type="number" min={1} inputMode="numeric" value={compareQty || ""} onChange={(event) => setCompareQty(Math.max(0, Math.floor(Number(event.target.value) || 0)))} />
+                  </label>
+                  <p className="mt-2 text-sm">{liveQuote(other, compareQty).charge.toLocaleString(locale)} · {liveQuote(other, compareQty).boxes} {t.boxes}</p>
+                  <p className="text-sm"><SheetMoney kz={liveQuote(other, compareQty).finalUnit} /> {t.perUnit}</p>
+                  <p className="font-medium"><SheetMoney kz={liveQuote(other, compareQty).lot} /> {t.inLot}</p>
                 </div>
               </div>
               <p className="bg-white px-3 py-2 text-center text-sm">
@@ -954,6 +927,14 @@ export function BlinkApp() {
           <div>
             <h2 className="font-display text-3xl">{t.simTitle}</h2>
             <p className="mt-1 max-w-2xl text-sm text-muted">{t.simLead}</p>
+            <label className="mt-3 block text-sm text-muted">
+              {cup.name}
+              <select className="mt-1 min-h-11 w-full max-w-xs rounded-xl border border-line bg-white px-2 text-ink" value={cup.id} onChange={(event) => chooseCup(event.target.value)}>
+                {CUPS.map((item) => (
+                  <option key={item.id} value={item.id}>{item.name} · {item.height} mm</option>
+                ))}
+              </select>
+            </label>
           </div>
           <button
             type="button"
@@ -1014,9 +995,9 @@ export function BlinkApp() {
             </span>
             <span className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-sm">
               <span className="text-muted">{t.final}</span>
-              <span className="text-right"><SheetMoney kz={priced.tier.kz + freightKz / Math.max(1, billed)} /></span>
+              <span className="text-right"><SheetMoney kz={liveQuote(cup, draft.qty).finalUnit} /></span>
               <span className="text-muted">{t.inLot}</span>
-              <span className="text-right"><SheetMoney kz={priced.tier.kz * billed + freightKz} /></span>
+              <span className="text-right"><SheetMoney kz={liveQuote(cup, draft.qty).lot} /></span>
             </span>
           </li>
         </ul>
@@ -1068,10 +1049,10 @@ export function BlinkApp() {
                     {billed !== draft.qty ? ` · ${t.billedAs} ${billed.toLocaleString(locale)}` : ""}
                   </span>
                 </td>
-                <td className="px-4 py-3"><SheetMoney kz={priced.tier.kz} /></td>
-                <td className="px-4 py-3"><SheetMoney kz={freightKz} /></td>
-                <td className="px-4 py-3"><SheetMoney kz={priced.tier.kz + freightKz / Math.max(1, billed)} /></td>
-                <td className="px-4 py-3"><SheetMoney kz={priced.tier.kz * billed + freightKz} /></td>
+                <td className="px-4 py-3"><SheetMoney kz={liveQuote(cup, draft.qty).unit} /></td>
+                <td className="px-4 py-3"><SheetMoney kz={liveQuote(cup, draft.qty).door} /></td>
+                <td className="px-4 py-3"><SheetMoney kz={liveQuote(cup, draft.qty).finalUnit} /></td>
+                <td className="px-4 py-3"><SheetMoney kz={liveQuote(cup, draft.qty).lot} /></td>
               </tr>
             </tbody>
           </table>
@@ -1136,6 +1117,21 @@ function BlinkLogo({ slogan }: { slogan: string }) {
 }
 
 const control = "min-h-11 w-full rounded-2xl border border-line bg-paper px-3";
+
+function liveQuote(item: ReturnType<typeof cupById>, qty: number) {
+  const tiers = item.prices.map((row) => row.qty);
+  const charge = chargedQty(qty, Math.min(...tiers), tiers);
+  const price = priceFor(item, charge);
+  const door = airFreight(charge, cupWeightScale(item))?.kz ?? 0;
+  return {
+    charge,
+    unit: price.tier.kz,
+    door,
+    finalUnit: price.tier.kz + door / Math.max(1, charge),
+    lot: price.tier.kz * charge + door,
+    boxes: Math.max(1, Math.ceil(charge / BOX_CUPS)),
+  };
+}
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (

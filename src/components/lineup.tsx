@@ -12,6 +12,7 @@ type Props = {
   otherCover: number;
   otherTexture: HTMLCanvasElement | null;
   otherBody?: string | null;
+  patternArt?: HTMLCanvasElement | null;
   spin: boolean;
   body?: string | null;
   mode?: "frost" | "clear" | "studio";
@@ -21,12 +22,11 @@ type Props = {
 };
 
 const BOTTLE_H = 230;
-const CAN_H = 115;
 
-export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot, otherHeight, otherCover, otherTexture, otherBody = null, spin, body = null, mode = "frost", className, shotsRef, onViews }: Props) {
+export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot, otherHeight, otherCover, otherTexture, otherBody = null, patternArt = null, spin, body = null, mode = "frost", className, shotsRef, onViews }: Props) {
   const ref = useRef<HTMLCanvasElement>(null);
-  const live = useRef({ texture, top, bot, heightMm, cover, otherTop, otherBot, otherHeight, otherCover, otherTexture, otherBody, spin, body, mode });
-  live.current = { texture, top, bot, heightMm, cover, otherTop, otherBot, otherHeight, otherCover, otherTexture, otherBody, spin, body, mode };
+  const live = useRef({ texture, top, bot, heightMm, cover, otherTop, otherBot, otherHeight, otherCover, otherTexture, otherBody, patternArt, spin, body, mode });
+  live.current = { texture, top, bot, heightMm, cover, otherTop, otherBot, otherHeight, otherCover, otherTexture, otherBody, patternArt, spin, body, mode };
   const onViewsRef = useRef(onViews);
   onViewsRef.current = onViews;
   const shotsHolder = useRef(shotsRef);
@@ -160,49 +160,84 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
       cupSpin.add(beer.group);
       cupSpinRight.add(soda.group);
 
-      const bottlePts = [
-        [28, 0],
-        [33, 12],
-        [34, 40],
-        [33, 120],
-        [30, 155],
-        [16, 178],
-        [12.5, 205],
-        [12.2, 218],
-        [15.2, 224],
-        [14.2, 230],
-      ].map(([x, y]) => new THREE.Vector2(x, y));
-      const bottle = new THREE.Mesh(
-        new THREE.LatheGeometry(bottlePts, 64),
+      const bottle = new THREE.Group();
+      const glass = new THREE.Mesh(
+        new THREE.LatheGeometry(
+          [[27, 0], [32, 6], [33.5, 16], [33.5, 148], [30, 162], [20, 176], [14, 192], [12.6, 214], [13.2, 222], [15.4, 226], [15.2, 230]].map(([x, y]) => new THREE.Vector2(x, y)),
+          80,
+        ),
         new THREE.MeshPhysicalMaterial({
-          color: 0x8d4e16,
-          roughness: 0.06,
-          transmission: 0.92,
-          thickness: 6,
+          color: 0xc47a32,
+          roughness: 0.04,
+          transmission: 0.86,
+          thickness: 4,
           ior: 1.5,
           clearcoat: 1,
-          clearcoatRoughness: 0.08,
-          attenuationColor: new THREE.Color(0x6a3010),
-          attenuationDistance: 40,
-          envMapIntensity: 1.1,
+          clearcoatRoughness: 0.05,
+          attenuationColor: new THREE.Color(0x8a3e10),
+          attenuationDistance: 28,
+          envMapIntensity: 1.2,
         }),
       );
-      bottle.castShadow = true;
+      glass.castShadow = true;
+      bottle.add(glass);
+      bottle.add(new THREE.Mesh(
+        new THREE.LatheGeometry([[1, 8], [30, 14], [30.2, 150], [18, 164], [12, 172], [1, 172]].map(([x, y]) => new THREE.Vector2(x, y)), 48),
+        new THREE.MeshPhysicalMaterial({
+          color: 0xdd7c0d,
+          roughness: 0.08,
+          transmission: 0.45,
+          thickness: 24,
+          ior: 1.34,
+          attenuationColor: new THREE.Color(0xb85a08),
+          attenuationDistance: 18,
+          transparent: true,
+        }),
+      ));
+      const paper = new THREE.Mesh(
+        new THREE.CylinderGeometry(33.7, 33.7, 62, 64, 1, true),
+        new THREE.MeshStandardMaterial({ color: 0xf4efe4, roughness: 0.55, side: THREE.DoubleSide }),
+      );
+      paper.position.y = 78;
+      bottle.add(paper);
+      const band = new THREE.Mesh(
+        new THREE.CylinderGeometry(33.85, 33.85, 10, 64, 1, true),
+        new THREE.MeshStandardMaterial({ color: 0x1f6b3a, roughness: 0.4, side: THREE.DoubleSide }),
+      );
+      band.position.y = 108;
+      bottle.add(band);
+      const cap = new THREE.Mesh(
+        new THREE.CylinderGeometry(15.6, 15.2, 8, 40),
+        new THREE.MeshStandardMaterial({ color: 0xd6d3cc, metalness: 0.82, roughness: 0.28 }),
+      );
+      cap.position.y = 226;
+      bottle.add(cap);
       root.add(bottle);
       const can = new THREE.Group();
-      const canBody = new THREE.Mesh(
-        new THREE.CylinderGeometry(33, 33, CAN_H - 8, 64),
-        new THREE.MeshStandardMaterial({ color: 0xd7dbe0, metalness: 0.86, roughness: 0.28 }),
+      const canShell = new THREE.Mesh(
+        new THREE.LatheGeometry([[26, 0], [32.4, 5], [33, 12], [33, 100], [31.2, 107], [24, 113], [22, 115]].map(([x, y]) => new THREE.Vector2(x, y)), 72),
+        new THREE.MeshStandardMaterial({ color: 0xd5d8dc, metalness: 0.92, roughness: 0.22 }),
       );
-      canBody.position.y = CAN_H / 2;
-      canBody.castShadow = true;
-      can.add(canBody);
-      const canTop = new THREE.Mesh(
-        new THREE.CylinderGeometry(31, 33, 8, 48),
-        new THREE.MeshStandardMaterial({ color: 0xc5c9ce, metalness: 0.9, roughness: 0.22 }),
+      canShell.castShadow = true;
+      can.add(canShell);
+      const canLabel = new THREE.Mesh(
+        new THREE.CylinderGeometry(33.15, 33.15, 72, 64, 1, true),
+        new THREE.MeshStandardMaterial({ color: 0xc8102e, metalness: 0.35, roughness: 0.32, side: THREE.DoubleSide }),
       );
-      canTop.position.y = CAN_H - 4;
-      can.add(canTop);
+      canLabel.position.y = 58;
+      can.add(canLabel);
+      const lid = new THREE.Mesh(
+        new THREE.CylinderGeometry(24, 26, 3.2, 48),
+        new THREE.MeshStandardMaterial({ color: 0xe7eaee, metalness: 0.95, roughness: 0.16 }),
+      );
+      lid.position.y = 113.2;
+      can.add(lid);
+      const tab = new THREE.Mesh(
+        new THREE.BoxGeometry(8, 0.6, 16),
+        new THREE.MeshStandardMaterial({ color: 0xd0d4d8, metalness: 0.9, roughness: 0.2 }),
+      );
+      tab.position.set(2, 115.2, 0);
+      can.add(tab);
       root.add(can);
 
       const metrics = () => {
@@ -225,19 +260,43 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
 
       let beerMap: InstanceType<typeof THREE.CanvasTexture> | null = null;
       let sodaMap: InstanceType<typeof THREE.CanvasTexture> | null = null;
-      const paintWrap = (source: HTMLCanvasElement | null, spanCover: number) => {
+      const paintWrap = (source: HTMLCanvasElement | null, spanCover: number, motif: HTMLCanvasElement | null) => {
         const wrap = document.createElement("canvas");
         wrap.width = 2048;
         wrap.height = 1024;
         const ctx = wrap.getContext("2d");
-        if (!ctx || !source) return null;
+        if (!ctx) return null;
         ctx.clearRect(0, 0, wrap.width, wrap.height);
-        const lip = 0.08;
-        const span = Math.min(Math.max(0.35, spanCover), 0.86);
-        ctx.drawImage(source, 0, lip * wrap.height, wrap.width, span * wrap.height);
+        const lip = 0.04;
+        const span = Math.min(Math.max(0.35, spanCover), 0.92);
+        const y = lip * wrap.height;
+        const band = span * wrap.height;
+        if (motif) {
+          const copies = 4;
+          const slot = wrap.width / copies;
+          const iw = motif.width || 1;
+          const ih = motif.height || 1;
+          for (let i = 0; i < copies; i += 1) {
+            const scale = Math.max(slot / iw, band / ih);
+            const dw = iw * scale;
+            const dh = ih * scale;
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(i * slot, y, slot, band);
+            ctx.clip();
+            ctx.drawImage(motif, i * slot + (slot - dw) / 2, y + (band - dh) / 2, dw, dh);
+            ctx.restore();
+          }
+        }
+        if (source) {
+          const slot = motif ? wrap.width * 0.5 : wrap.width;
+          ctx.drawImage(source, (wrap.width - slot) / 2, y, slot, band);
+        }
+        if (!motif && !source) return null;
         const next = new THREE.CanvasTexture(wrap);
         next.colorSpace = THREE.SRGBColorSpace;
         next.anisotropy = renderer.capabilities.getMaxAnisotropy();
+        next.wrapS = THREE.RepeatWrapping;
         next.needsUpdate = true;
         return next;
       };
@@ -245,8 +304,8 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
         beerMap?.dispose();
         sodaMap?.dispose();
         const current = live.current;
-        beerMap = paintWrap(current.texture, current.cover);
-        sodaMap = paintWrap(current.otherTexture ?? current.texture, current.otherCover);
+        beerMap = paintWrap(current.texture, current.cover, current.patternArt);
+        sodaMap = paintWrap(current.otherTexture ?? current.texture, current.otherCover, current.patternArt);
         beer.decalMat.map = beerMap;
         soda.decalMat.map = sodaMap;
         beer.decalMat.needsUpdate = true;
@@ -280,14 +339,14 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
         camera.aspect = w / h;
         camera.fov = onlyCup ? 18 : 22;
         const height = live.current.heightMm;
-        const targetY = onlyCup ? height * 0.48 : BOTTLE_H * 0.42;
+        const lookY = onlyCup ? height * 0.5 : BOTTLE_H * 0.5;
         const fov = (camera.fov * Math.PI) / 180;
         const tan = Math.tan(fov / 2);
-        const distH = ((onlyCup ? height * 0.7 : BOTTLE_H * 0.72) / tan);
-        const distW = (onlyCup ? Math.max(height * 0.7, live.current.top) : metrics().span / 2) / (tan * Math.max(0.35, camera.aspect));
-        const wide = Math.max(distH, distW) * 1.12;
-        camera.position.set(0, targetY, wide);
-        camera.lookAt(0, targetY, 0);
+        const halfH = (onlyCup ? height * 0.62 : BOTTLE_H * 0.58);
+        const halfW = onlyCup ? Math.max(live.current.top * 0.7, height * 0.45) : metrics().span * 0.55;
+        const dist = Math.max(halfH / tan, halfW / (tan * Math.max(0.2, camera.aspect))) * 1.08;
+        camera.position.set(0, lookY, dist);
+        camera.lookAt(0, lookY, 0);
         camera.updateProjectionMatrix();
       };
       fit(false);
@@ -350,10 +409,11 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
           const mat2 = (soda.group.children[0] as { material: { color: { set: (v: string | number) => void } } }).material;
           mat2.color.set(otherTint || 0xf4f1ec);
         }
-        const texKey = `${spec.texture ? 1 : 0}:${spec.otherTexture ? 1 : 0}:${spec.cover}:${spec.otherCover}`;
-        if (beer.group.userData.tex !== spec.texture || soda.group.userData.tex !== spec.otherTexture || beer.group.userData.key !== texKey) {
+        const texKey = `${spec.texture ? 1 : 0}:${spec.otherTexture ? 1 : 0}:${spec.patternArt ? 1 : 0}:${spec.cover}:${spec.otherCover}`;
+        if (beer.group.userData.tex !== spec.texture || soda.group.userData.tex !== spec.otherTexture || beer.group.userData.pat !== spec.patternArt || beer.group.userData.key !== texKey) {
           beer.group.userData.tex = spec.texture;
           soda.group.userData.tex = spec.otherTexture;
+          beer.group.userData.pat = spec.patternArt;
           beer.group.userData.key = texKey;
           paint();
         }
