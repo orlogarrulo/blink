@@ -391,33 +391,31 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
         if (!onlyCup && (w < 2 || h < 2)) return;
         if (!onlyCup) renderer.setSize(w, h, false);
         camera.aspect = w / h;
-        camera.fov = onlyCup ? 18 : 22;
+        camera.fov = onlyCup ? 16 : 22;
 
-        // Compute real bounds of the visible objects
-        const box = new THREE.Box3();
         if (onlyCup) {
-          box.setFromObject(cupSpin);
+          // Frame the single cup by its known height, centered
+          const cupH = beer.height;
+          const lookY = cupH * 0.48;
+          const fov = (camera.fov * Math.PI) / 180;
+          const tan = Math.tan(fov / 2);
+          const dist = (cupH * 0.7) / tan;
+          camera.position.set(0, lookY, dist);
+          camera.lookAt(0, lookY, 0);
         } else {
-          box.setFromObject(root);
+          const box = new THREE.Box3().setFromObject(root);
+          const center = new THREE.Vector3();
+          const size = new THREE.Vector3();
+          box.getCenter(center);
+          box.getSize(size);
+          const fov = (camera.fov * Math.PI) / 180;
+          const tan = Math.tan(fov / 2);
+          const halfH = size.y * 0.42;
+          const halfW = size.x * 0.42;
+          const dist = Math.max(halfH / tan, halfW / (tan * Math.max(0.3, camera.aspect))) * 0.78;
+          camera.position.set(center.x, center.y, dist);
+          camera.lookAt(center.x, center.y, 0);
         }
-        const center = new THREE.Vector3();
-        const size = new THREE.Vector3();
-        box.getCenter(center);
-        box.getSize(size);
-
-        const fov = (camera.fov * Math.PI) / 180;
-        const tan = Math.tan(fov / 2);
-        // For single-cup, frame the full height with margin above and below
-        const pad = onlyCup ? 0.85 : 0.42;
-        const distMul = onlyCup ? 1.5 : 0.78;
-        const halfH = size.y * pad;
-        const halfW = size.x * pad;
-        const dist = Math.max(halfH / tan, halfW / (tan * Math.max(0.3, camera.aspect))) * distMul;
-
-        // Look at the vertical center of the cup
-        const lookY = center.y;
-        camera.position.set(center.x, lookY, dist);
-        camera.lookAt(center.x, lookY, 0);
         camera.updateProjectionMatrix();
       };
       fit(false);
