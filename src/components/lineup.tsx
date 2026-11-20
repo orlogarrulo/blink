@@ -19,6 +19,7 @@ type Props = {
   liquid?: "none" | "beer" | "soda";
   otherLiquid?: "none" | "beer" | "soda";
   mode?: "frost" | "clear" | "studio";
+  solo?: "left" | "right" | null;
   className?: string;
   shotsRef?: { current: ((turns: number[]) => HTMLCanvasElement[]) | null };
   onViews?: (shots: HTMLCanvasElement[]) => void;
@@ -28,8 +29,8 @@ const BOTTLE_H = 230;
 
 export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot, otherHeight, otherCover, otherTexture, otherBody = null, patternArt = null, otherPattern = null, spin, body = null, liquid = "none", otherLiquid = "none", mode = "frost", className, shotsRef, onViews }: Props) {
   const ref = useRef<HTMLCanvasElement>(null);
-  const live = useRef({ texture, top, bot, heightMm, cover, otherTop, otherBot, otherHeight, otherCover, otherTexture, otherBody, patternArt, otherPattern, spin, body, liquid, otherLiquid, mode });
-  live.current = { texture, top, bot, heightMm, cover, otherTop, otherBot, otherHeight, otherCover, otherTexture, otherBody, patternArt, otherPattern, spin, body, liquid, otherLiquid, mode };
+  const live = useRef({ texture, top, bot, heightMm, cover, otherTop, otherBot, otherHeight, otherCover, otherTexture, otherBody, patternArt, otherPattern, spin, body, liquid, otherLiquid, mode, solo });
+  live.current = { texture, top, bot, heightMm, cover, otherTop, otherBot, otherHeight, otherCover, otherTexture, otherBody, patternArt, otherPattern, spin, body, liquid, otherLiquid, mode, solo };
   const onViewsRef = useRef(onViews);
   onViewsRef.current = onViews;
   const shotsHolder = useRef(shotsRef);
@@ -535,6 +536,13 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
         setLiquid(soda, spec.otherLiquid || "none");
 
         place();
+        const soloMode = spec.solo;
+        bottle.visible = !soloMode;
+        can.visible = !soloMode;
+        cupSpin.visible = soloMode !== "right";
+        cupSpinRight.visible = soloMode !== "left";
+        if (soloMode === "left") cupSpin.position.x = 0;
+        if (soloMode === "right") cupSpinRight.position.x = 0;
         if (spec.spin && !drag.current) {
           if (!pausedLeft.current) angleLeft.current += 0.012;
           if (!pausedRight.current) angleRight.current += 0.012;
