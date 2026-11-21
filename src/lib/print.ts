@@ -376,19 +376,15 @@ export function tintCanvas(source: HTMLCanvasElement, hex: string, process: Proc
     data[i] = tr;
     data[i + 1] = tg;
     data[i + 2] = tb;
-    // Remove white background only if the target color is not white
-    const targetIsWhite = tr > 220 && tg > 220 && tb > 220;
-    const isWhite = r > 210 && g > 210 && b > 210;
-    if (!targetIsWhite && (isWhite || lum > 0.82)) {
+    // Soft white removal: only pure white becomes transparent, keep edges vivid
+    const targetIsWhite = tr > 230 && tg > 230 && tb > 230;
+    const isPureWhite = r > 245 && g > 245 && b > 245;
+    if (!targetIsWhite && isPureWhite) {
       data[i + 3] = 0;
     } else {
-      const targetLum = (tr * 0.299 + tg * 0.587 + tb * 0.114) / 255;
-      if (targetLum > 0.85) {
-        data[i + 3] = alpha;
-      } else {
-        const edge = Math.min(1, ink * 1.2);
-        data[i + 3] = Math.round(alpha * edge);
-      }
+      // Preserve more of the original alpha for vibrant colors
+      const keep = Math.min(1, 0.35 + ink * 0.9);
+      data[i + 3] = Math.round(alpha * keep);
     }
   }
   ctx.putImageData(frame, 0, 0);
