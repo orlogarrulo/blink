@@ -232,8 +232,8 @@ function drawCup(
         const rx1 = rxAt(band1);
         ctx.save();
         ctx.beginPath();
-        ctx.moveTo(cx - rx0, y0);
-        ctx.lineTo(cx + rx0, y0);
+        // Curved top edge following the rim
+        ctx.ellipse(cx, y0, rx0, ry * 0.5, 0, Math.PI, 0, true);
         ctx.lineTo(cx + rx1, y1);
         ctx.lineTo(cx - rx1, y1);
         ctx.closePath();
