@@ -585,20 +585,23 @@ export function BlinkApp() {
       },
       turns,
     );
-    // Flip third cup upside down (mouth facing down)
-    if (solid[2]) {
+    // Flip third cup upside down (mouth facing down, as if on a table)
+    if (solid.length > 2 && solid[2]) {
       const flipped = document.createElement("canvas");
       flipped.width = solid[2].width;
       flipped.height = solid[2].height;
       const fctx = flipped.getContext("2d");
       if (fctx) {
+        fctx.save();
         fctx.translate(flipped.width / 2, flipped.height / 2);
         fctx.rotate(Math.PI);
-        fctx.drawImage(solid[2], -flipped.width / 2, -flipped.height / 2);
+        fctx.drawImage(solid[2], -solid[2].width / 2, -solid[2].height / 2);
+        fctx.restore();
         solid[2] = flipped;
       }
     }
-    const views = viewsSheet(item.name, t.angles.slice(0, 3), solid);
+    const viewLabels = ["Frente", "Três quartos", "Lado / invertido"];
+    const views = viewsSheet(item.name, viewLabels, solid);
     return [sheet, tech, views];
   }
 
