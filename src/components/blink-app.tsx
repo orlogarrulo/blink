@@ -572,7 +572,21 @@ export function BlinkApp() {
       label: printLabel,
       bodyColor: body,
     });
-    return [sheet, tech];
+    const turns = [0, Math.PI * 0.28, Math.PI * 0.5];
+    const solid = cupStills(
+      {
+        texture: pattern ? wrapPrint(texture, motif, 0.9) : texture,
+        top: item.top,
+        bot: item.bot,
+        heightMm: item.height,
+        cover: motif ? 0.9 : itemArea.h / item.height,
+        body,
+        liquid: side === "beer" ? liquid : rightLiquid,
+      },
+      turns,
+    );
+    const views = viewsSheet(item.name, t.angles.slice(0, 3), solid);
+    return [sheet, tech, views];
   }
 
   async function saveCard(side: "beer" | "soda") {
