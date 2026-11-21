@@ -121,7 +121,7 @@ function drawCup(
       const rxAt = (t: number) => topR + (botR - topR) * t;
       const strips = width < 180 ? 64 : width < 420 ? 120 : 168;
 
-      const lipPx = Math.max(ry + Math.max(2, topR * 0.045), bodyH * Math.min(0.09, 8 / spec.heightMm));
+      const lipPx = Math.max(ry + Math.max(4, topR * 0.08), bodyH * 0.12);
       const footMin = bodyH * 0.065;
       const spanPx = Math.min(Math.max(bodyH * 0.18, bodyH * spec.cover), bodyH - lipPx - footMin);
       const band0 = lipPx / bodyH;
@@ -139,12 +139,12 @@ function drawCup(
       ctx.lineTo(cx - botR, topCy + bodyH);
       ctx.closePath();
       const frost = ctx.createLinearGradient(cx - topR, 0, cx + topR, 0);
-      const milk = spec.body ? mixWhite(spec.body) : null;
-      frost.addColorStop(0, milk ? milk(0.55) : "#f3f2f0");
-      frost.addColorStop(0.18, milk ? milk(0.82) : "#fafaf9");
-      frost.addColorStop(0.5, milk ? milk(0.74) : "#f6f5f3");
-      frost.addColorStop(0.8, milk ? milk(0.58) : "#efecea");
-      frost.addColorStop(1, milk ? milk(0.42) : "#e6e4e1");
+      // Body stays translucent; color only goes on the IML print band below the rim
+      frost.addColorStop(0, "#f3f2f0");
+      frost.addColorStop(0.18, "#fafaf9");
+      frost.addColorStop(0.5, "#f6f5f3");
+      frost.addColorStop(0.8, "#efecea");
+      frost.addColorStop(1, "#e6e4e1");
       ctx.fillStyle = frost;
       ctx.fill();
       ctx.save();
