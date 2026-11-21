@@ -171,6 +171,7 @@ export function BlinkApp() {
   const [cupTint, setCupTint] = useState<string | null>(null);
   const [liquid, setLiquid] = useState<"none" | "beer" | "soda">("none");
   const [soloCard, setSoloCard] = useState<"beer" | "soda" | null>(null);
+  const [gridTarget, setGridTarget] = useState<"cup1" | "cup2">("cup1");
   const [rightLiquid, setRightLiquid] = useState<"none" | "beer" | "soda">("none");
   const [quote, setQuote] = useState<{ cupId: string; qty: number; unitKz: number; freightKz: number; lotKz: number } | null>(null);
   const [market, setMarket] = useState<Market>("KZ");
@@ -558,6 +559,7 @@ export function BlinkApp() {
       qty: numbers.charge,
       colors: sheetColors,
       label: printLabel,
+      bodyColor: body,
       delivery: when,
       eventDate: draft.eventDate,
       priceLine: `${unitMoney.primary} (${unitMoney.secondary}) / un  ·  ${lotMoney.primary} (${lotMoney.secondary})`,
@@ -621,22 +623,30 @@ export function BlinkApp() {
       <section className="mt-6">
         <h2 className="font-display text-2xl">{t.plainTitle}</h2>
         <p className="mt-1 text-sm text-muted">{t.plainLead}</p>
+        <div className="mt-3 flex gap-2">
+          <button type="button" onClick={() => setGridTarget("cup1")} className={`min-h-11 rounded-full px-4 text-sm ${gridTarget === "cup1" ? "bg-ink text-paper" : "bg-card border border-line"}`}>Selecionar Copo 1</button>
+          <button type="button" onClick={() => setGridTarget("cup2")} className={`min-h-11 rounded-full px-4 text-sm ${gridTarget === "cup2" ? "bg-ipe text-ink" : "bg-card border border-line"}`}>Selecionar Copo 2</button>
+        </div>
         <ul className="rise-list mt-4 grid grid-cols-2 gap-3 sm:grid-cols-5">
           {CUPS.map((item) => {
-            const on = item.id === cup.id;
+            const isCup1 = item.id === cup.id;
+            const isCup2 = item.id === compareId;
+            const on = gridTarget === "cup1" ? isCup1 : isCup2;
             const window = areaFor(item, processesFor(item).includes(process) ? process : processesFor(item)[0]);
+            const showTexture = isCup1 && chosen ? chosen : isCup2 && rightShown ? rightShown : null;
+            const showBody = isCup1 ? cupTint : isCup2 ? right.cupTint : null;
             return (
               <li key={item.id}>
                 <button
                   type="button"
-                  onClick={() => chooseCup(item.id)}
+                  onClick={() => gridTarget === "cup1" ? chooseCup(item.id) : setCompareId(item.id)}
                   onDoubleClick={() => setZoomedCup(item.id)}
-                  className={`w-full rounded-3xl border bg-card px-2 pb-3 pt-2 text-left ${on ? "cup-on border-ink" : "border-line"}`}
+                  className={`w-full rounded-3xl border bg-card px-2 pb-3 pt-2 text-left ${isCup1 ? "cup-on border-ink" : isCup2 ? "border-ipe ring-2 ring-ipe" : "border-line"}`}
                   title="Duplo clique para ampliar o material"
                 >
                   <CupView
-                    texture={on && chosen ? chosen : null}
-                    body={on ? cupTint : null}
+                    texture={showTexture}
+                    body={showBody}
                     top={item.top}
                     bot={item.bot}
                     heightMm={item.height}
@@ -648,6 +658,7 @@ export function BlinkApp() {
                   <span className="text-xs text-muted">
                     {item.cl} cl
                     {item.measured ? ` · ${item.height} mm` : ""}
+                    {isCup1 ? " · Copo 1" : isCup2 ? " · Copo 2" : ""}
                   </span>
                 </button>
               </li>
@@ -932,8 +943,8 @@ export function BlinkApp() {
                   </button>
                 ) : null}
               </div>
-              {chosen ? <WindowPlate area={area} process={process} canvas={chosen} caption={t} /> : null}
-              {rightShown && otherArea ? <WindowPlate area={otherArea} process={otherProcess} canvas={rightShown} caption={t} /> : null}
+              {chosen ? <WindowPlate area={area} process={process} canvas={chosen} caption={t} cupColor={cupTint} /> : null}
+              {rightShown && otherArea ? <WindowPlate area={otherArea} process={otherProcess} canvas={rightShown} caption={t} cupColor={right.cupTint} /> : null}
             </div>
             </section>
           ) : null}
@@ -1172,7 +1183,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-function WindowPlate({ area, process, canvas, caption }: { area: Area; process: Process; canvas: HTMLCanvasElement; caption: ReturnType<typeof text> }) {
+function WindowPlate({ area, process, canvas, caption, cupColor = null }: { area: Area; process: Process; canvas: HTMLCanvasElement; caption: ReturnType<typeof text>; cupColor?: string | null }) {
   const safety = process === "iml" ? 3 : 2;
   const [src, setSrc] = useState("");
   useEffect(() => {
@@ -1188,7 +1199,7 @@ function WindowPlate({ area, process, canvas, caption }: { area: Area; process: 
   return (
     <figure className="border-t border-line px-4 py-4">
       <svg viewBox={`0 0 ${width} ${height}`} className="w-full" role="img" aria-label={caption.plate}>
-        <rect x={pad} y={pad} width={inner} height={innerH} fill="var(--color-paper)" />
+        <rect x={pad} y={pad} width={inner} height={innerH} fill={cupColor || "var(--color-paper)"} />
         {src ? <image href={src} x={pad} y={pad} width={inner} height={innerH} preserveAspectRatio="xMidYMid meet" /> : null}
         <rect x={pad} y={pad} width={inner} height={innerH} fill="none" stroke="var(--color-ink)" strokeWidth="1.5" />
         <rect x={pad + insetX} y={pad + insetY} width={inner - insetX * 2} height={innerH - insetY * 2} fill="none" stroke="var(--color-ipe)" strokeDasharray="7 5" strokeWidth="1.5" />
