@@ -704,19 +704,24 @@ export function wrapPrint(source: HTMLCanvasElement | null, motif: HTMLCanvasEle
     return { x: minX, y: minY, w: Math.max(2, maxX - minX + 2), h: Math.max(2, maxY - minY + 2) };
   };
   if (motif) {
+    // Pattern fills the entire texture height (full cup coverage)
     const copies = 4;
     const slot = wrap.width / copies;
     const iw = motif.width || 1;
     const ih = motif.height || 1;
+    const fullH = wrap.height;
     for (let i = 0; i < copies; i += 1) {
-      const scale = Math.max(slot / iw, band / ih);
+      const scale = Math.max(slot / iw, fullH / ih);
       const dw = iw * scale;
       const dh = ih * scale;
       ctx.save();
       ctx.beginPath();
-      ctx.rect(i * slot, y, slot, band);
+      ctx.rect(i * slot, 0, slot, fullH);
       ctx.clip();
-      ctx.drawImage(motif, i * slot + (slot - dw) / 2, y + (band - dh) / 2, dw, dh);
+      // Tile vertically to fill full height
+      for (let ty = 0; ty < fullH; ty += dh) {
+        ctx.drawImage(motif, i * slot + (slot - dw) / 2, ty, dw, dh);
+      }
       ctx.restore();
     }
   }
@@ -727,11 +732,14 @@ export function wrapPrint(source: HTMLCanvasElement | null, motif: HTMLCanvasEle
       const isSmall = box.w < 200 && box.h < 200;
       const copies = isSmall ? 3 : aspect > 2.4 ? 2 : aspect < 0.85 ? 4 : 3;
       const slot = wrap.width / copies;
+      // Offset so first copy is centered at front (U=0.5 maps to front of cup)
+      const offset = slot / 2;
       for (let i = 0; i < copies; i += 1) {
         const scale = Math.min((slot * 0.82) / box.w, (band * 0.82) / box.h);
         const dw = box.w * scale;
         const dh = box.h * scale;
-        ctx.drawImage(source, box.x, box.y, box.w, box.h, i * slot + (slot - dw) / 2, y + (band - dh) / 2, dw, dh);
+        const x = ((i * slot + offset) % wrap.width);
+        ctx.drawImage(source, box.x, box.y, box.w, box.h, x - dw / 2, y + (band - dh) / 2, dw, dh);
       }
     }
   }
