@@ -624,13 +624,13 @@ export function techSheet(options: {
   ctx.setLineDash([6, 4]);
   ctx.strokeStyle = "#e6b325";
   ctx.lineWidth = 1;
-  const safetyMm = 3;
+  const safetyMm = 2; // IML safe zone: 1.5–3 mm
   const safetyPx = safetyMm / options.area.w * boxW;
   ctx.strokeRect(boxX + safetyPx, boxY + safetyPx, boxW - safetyPx * 2, boxH - safetyPx * 2);
   ctx.setLineDash([]);
 
   // Bleed margin (outside) - 3mm beyond print area
-  const bleedMm = 3; // within 2.5–5 mm IML standard
+  const bleedMm = 3; // IML bleed: 2.5–5 mm
   const bleedPx = bleedMm / options.area.w * boxW;
   ctx.setLineDash([3, 3]);
   ctx.strokeStyle = "#d63a3a";
