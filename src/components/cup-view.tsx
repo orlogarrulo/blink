@@ -282,7 +282,7 @@ function drawCup(
       // rim / mouth - thin same-material lip
       ctx.beginPath();
       ctx.ellipse(cx, topCy, topR, ry, 0, 0, Math.PI * 2);
-      ctx.strokeStyle = milk ? milk(0.3) : "#d8d6d3";
+      ctx.strokeStyle = "#d8d6d3";
       ctx.lineWidth = Math.max(1.2, topR * 0.04);
       ctx.stroke();
       ctx.beginPath();
