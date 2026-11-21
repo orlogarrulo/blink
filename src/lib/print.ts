@@ -545,6 +545,91 @@ export function angleSheet(rows: { name: string; labels: readonly string[]; shot
   return canvas;
 }
 
+
+export function techSheet(options: {
+  cup: { name: string; top: number; bot: number; height: number };
+  area: { w: number; h: number };
+  process: string;
+  label: HTMLCanvasElement | null;
+  bodyColor?: string | null;
+}): HTMLCanvasElement {
+  const canvas = document.createElement("canvas");
+  canvas.width = 1240;
+  canvas.height = 1754;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return canvas;
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Header
+  ctx.fillStyle = "#1A120C";
+  ctx.font = "700 48px Fraunces, serif";
+  ctx.fillText(options.cup.name, 60, 80);
+  ctx.font = "500 18px Outfit, sans-serif";
+  ctx.fillStyle = "#7a6a5c";
+  ctx.fillText(`Área de impressão: ${options.area.w} × ${options.area.h} mm  ·  ${options.process}`, 60, 115);
+
+  // Print area box with measurements
+  const boxX = 180;
+  const boxY = 180;
+  const boxW = 880;
+  const boxH = boxW * (options.area.h / options.area.w);
+
+  // Background color if set
+  if (options.bodyColor) {
+    ctx.fillStyle = options.bodyColor;
+    ctx.fillRect(boxX, boxY, boxW, boxH);
+  } else {
+    ctx.fillStyle = "#fafaf9";
+    ctx.fillRect(boxX, boxY, boxW, boxH);
+  }
+
+  // Draw the label/pattern
+  if (options.label) {
+    ctx.drawImage(options.label, boxX, boxY, boxW, boxH);
+  }
+
+  // Border
+  ctx.strokeStyle = "#1A120C";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(boxX, boxY, boxW, boxH);
+
+  // Width measurement (bottom)
+  ctx.fillStyle = "#1A120C";
+  ctx.font = "500 16px Outfit, sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText(`${options.area.w} mm`, boxX + boxW / 2, boxY + boxH + 30);
+  ctx.beginPath();
+  ctx.moveTo(boxX, boxY + boxH + 12);
+  ctx.lineTo(boxX + boxW, boxY + boxH + 12);
+  ctx.stroke();
+
+  // Height measurement (left)
+  ctx.save();
+  ctx.translate(boxX - 40, boxY + boxH / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillText(`${options.area.h} mm`, 0, 0);
+  ctx.restore();
+
+  // Cup specs
+  ctx.textAlign = "left";
+  ctx.font = "500 16px Outfit, sans-serif";
+  ctx.fillStyle = "#1A120C";
+  const specsY = boxY + boxH + 80;
+  ctx.fillText(`Copo: boca ${options.cup.top} mm  ·  base ${options.cup.bot} mm  ·  altura ${options.cup.height} mm`, 60, specsY);
+  ctx.fillText(`Margem de segurança: 3 mm (tracejado). Impressão não alcança a borda da boca.`, 60, specsY + 28);
+
+  // Safety margin indicator
+  ctx.setLineDash([6, 4]);
+  ctx.strokeStyle = "#e6b325";
+  ctx.lineWidth = 1;
+  const margin = 3 / options.area.w * boxW;
+  ctx.strokeRect(boxX + margin, boxY + margin, boxW - margin * 2, boxH - margin * 2);
+  ctx.setLineDash([]);
+
+  return canvas;
+}
+
 export function viewsSheet(title: string, labels: readonly string[], shots: HTMLCanvasElement[]): HTMLCanvasElement {
   const canvas = document.createElement("canvas");
   canvas.width = 1240;
