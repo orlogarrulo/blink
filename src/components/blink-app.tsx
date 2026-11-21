@@ -625,7 +625,7 @@ export function BlinkApp() {
         <p className="mt-1 text-sm text-muted">{t.plainLead}</p>
         <div className="mt-3 flex gap-2">
           <button type="button" onClick={() => setGridTarget("cup1")} className={`min-h-11 rounded-full px-4 text-sm ${gridTarget === "cup1" ? "bg-ink text-paper" : "bg-card border border-line"}`}>Selecionar Copo 1</button>
-          <button type="button" onClick={() => setGridTarget("cup2")} className={`min-h-11 rounded-full px-4 text-sm ${gridTarget === "cup2" ? "bg-ipe text-ink" : "bg-card border border-line"}`}>Selecionar Copo 2</button>
+          <button type="button" onClick={() => setGridTarget("cup2")} className={`min-h-11 rounded-full px-4 text-sm ${gridTarget === "cup2" ? "bg-urucum text-paper" : "bg-card border border-line"}`}>Selecionar Copo 2</button>
         </div>
         <ul className="rise-list mt-4 grid grid-cols-2 gap-3 sm:grid-cols-5">
           {CUPS.map((item) => {
@@ -641,7 +641,7 @@ export function BlinkApp() {
                   type="button"
                   onClick={() => gridTarget === "cup1" ? chooseCup(item.id) : setCompareId(item.id)}
                   onDoubleClick={() => setZoomedCup(item.id)}
-                  className={`w-full rounded-3xl border bg-card px-2 pb-3 pt-2 text-left ${isCup1 ? "cup-on border-ink" : isCup2 ? "border-ipe ring-2 ring-ipe" : "border-line"}`}
+                  className={`w-full rounded-3xl border bg-card px-2 pb-3 pt-2 text-left ${isCup1 ? "cup-on border-ink ring-2 ring-ink" : isCup2 ? "border-urucum ring-2 ring-urucum" : "border-line"}`}
                   title="Duplo clique para ampliar o material"
                 >
                   <CupView
