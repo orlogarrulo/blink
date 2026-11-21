@@ -121,11 +121,9 @@ function drawCup(
       const rxAt = (t: number) => topR + (botR - topR) * t;
       const strips = width < 180 ? 64 : width < 420 ? 120 : 168;
 
-      const lipPx = Math.max(2, topR * 0.008);
-      const footMin = bodyH * 0.02;
-      // Pattern/logo fills from just below the rim to near the bottom
-      const band0 = lipPx / bodyH;
-      const band1 = 1 - (footMin / bodyH);
+      // Print follows the front lip and runs to the base. The rim stroke stays clear.
+      const band0 = 0;
+      const band1 = 1;
 
       ctx.fillStyle = "rgba(176, 184, 190, 0.2)";
       ctx.beginPath();
@@ -175,27 +173,24 @@ function drawCup(
       ctx.fillRect(cx - topR, topCy, topR * 2, bodyH);
       ctx.restore();
 
-      // IML print layer: opaque color band over the translucent cup, logo sits on top
-      if (spec.body) {
-        const imlTop = topCy + band0 * bodyH - 2;
-        const imlBot = topCy + band1 * bodyH;
-        const imlRx0 = rxAt(band0);
-        const imlRx1 = rxAt(band1);
-        ctx.save();
+      // Colour and print share one silhouette: front lip curve, full width, down to the base.
+      const printPath = () => {
         ctx.beginPath();
-        // Curved top edge following the rim ellipse
-        ctx.ellipse(cx, imlTop, imlRx0, ry * 0.5, 0, Math.PI, 0, true);
-        ctx.lineTo(cx + imlRx1, imlBot);
-        ctx.lineTo(cx - imlRx1, imlBot);
+        ctx.ellipse(cx, topCy, topR + 0.6, ry, 0, Math.PI, 0, false);
+        ctx.lineTo(cx + botR + 0.6, topCy + bodyH);
+        ctx.lineTo(cx - botR - 0.6, topCy + bodyH);
         ctx.closePath();
+      };
+      if (spec.body) {
+        ctx.save();
+        printPath();
         ctx.fillStyle = spec.body;
-        ctx.globalAlpha = 0.92;
+        ctx.globalAlpha = 0.96;
         ctx.fill();
         ctx.globalAlpha = 1;
-        // slight sheen on the IML layer
-        const imlSheen = ctx.createLinearGradient(cx - imlRx0, 0, cx + imlRx0, 0);
+        const imlSheen = ctx.createLinearGradient(cx - topR, 0, cx + topR, 0);
         imlSheen.addColorStop(0, "rgba(255,255,255,0)");
-        imlSheen.addColorStop(0.25, "rgba(255,255,255,0.18)");
+        imlSheen.addColorStop(0.22, "rgba(255,255,255,0.16)");
         imlSheen.addColorStop(0.4, "rgba(255,255,255,0)");
         imlSheen.addColorStop(1, "rgba(255,255,255,0)");
         ctx.fillStyle = imlSheen;
@@ -226,17 +221,10 @@ function drawCup(
       }
 
       if (spec.texture) {
-        const y0 = topCy + band0 * bodyH;
-        const y1 = topCy + band1 * bodyH;
-        const rx0 = rxAt(band0);
-        const rx1 = rxAt(band1);
+        const y0 = topCy;
+        const y1 = topCy + bodyH;
         ctx.save();
-        ctx.beginPath();
-        // Curved top edge following the rim
-        ctx.ellipse(cx, y0, rx0, ry * 0.5, 0, Math.PI, 0, true);
-        ctx.lineTo(cx + rx1, y1);
-        ctx.lineTo(cx - rx1, y1);
-        ctx.closePath();
+        printPath();
         ctx.clip();
         for (let i = 0; i < strips; i += 1) {
           const a0 = -Math.PI / 2 + (i / strips) * Math.PI;
