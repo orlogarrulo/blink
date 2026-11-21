@@ -824,7 +824,7 @@ export function wrapPrint(source: HTMLCanvasElement | null, motif: HTMLCanvasEle
     if (box) {
       const aspect = box.w / box.h;
       const isSmall = box.w < 200 && box.h < 200;
-      const copies = Math.max(2, isSmall ? 3 : aspect > 2.4 ? 2 : aspect < 0.85 ? 4 : 3);
+      const copies = 2; // always duplicate logo
       const slot = wrap.width / copies;
       // Offset so first copy is centered at front (U=0.5 maps to front of cup)
       const offset = slot / 2;
