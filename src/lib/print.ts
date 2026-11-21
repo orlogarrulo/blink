@@ -119,7 +119,7 @@ export function composeArts(images: CanvasImageSource[]): HTMLCanvasElement {
   if (pattern) {
     const tile = 320;
     ctx.save();
-    ctx.globalAlpha = 0.34;
+    ctx.globalAlpha = 0.85;
     for (let y = 0; y < canvas.height; y += tile) {
       for (let x = 0; x < canvas.width; x += tile) ctx.drawImage(pattern, x + 8, y + 8, tile - 16, tile - 16);
     }
@@ -680,7 +680,7 @@ export function wrapPrint(source: HTMLCanvasElement | null, motif: HTMLCanvasEle
   const ctx = wrap.getContext("2d");
   if (!ctx) return null;
   const lip = 0.18;
-  const span = Math.min(Math.max(0.28, spanCover), 0.70);
+  const span = Math.min(Math.max(0.28, spanCover), 0.88);
   const y = lip * wrap.height;
   const band = span * wrap.height;
   const inkBox = (image: HTMLCanvasElement) => {
