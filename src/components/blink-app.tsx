@@ -172,6 +172,8 @@ export function BlinkApp() {
   const [liquid, setLiquid] = useState<"none" | "beer" | "soda">("none");
   const [soloCard, setSoloCard] = useState<"beer" | "soda" | null>(null);
   const [gridTarget, setGridTarget] = useState<"cup1" | "cup2">("cup1");
+  const [pantoneModal, setPantoneModal] = useState<{ hex: string; type: "logo" | "cup" } | null>(null);
+  const [customColors, setCustomColors] = useState<Record<string, { rgb: string; cmyk: string }>>({});
   const [rightLiquid, setRightLiquid] = useState<"none" | "beer" | "soda">("none");
   const [quote, setQuote] = useState<{ cupId: string; qty: number; unitKz: number; freightKz: number; lotKz: number } | null>(null);
   const [market, setMarket] = useState<Market>("KZ");
@@ -844,14 +846,14 @@ export function BlinkApp() {
                   <div className="mt-1 flex flex-wrap gap-1">
                     <button type="button" className={`min-h-11 rounded-full border px-3 text-xs ${tint === null ? "border-ink" : "border-line"}`} onClick={() => setTint(null)}>{t.original}</button>
                     {STOCK.map((swatch) => (
-                      <button key={`l-${swatch.hex}`} type="button" aria-label={swatch.hex} className={`h-9 w-9 rounded-full border ${tint === swatch.hex ? "border-ink ring-2 ring-ink" : "border-line"}`} style={{ background: swatch.hex }} onClick={() => setTint(swatch.hex)} />
+                      <button key={`l-${swatch.hex}`} type="button" aria-label={swatch.hex} className={`h-9 w-9 rounded-full border ${tint === swatch.hex ? "border-ink ring-2 ring-ink" : "border-line"}`} style={{ background: swatch.hex }} onClick={() => setTint(swatch.hex)} onDoubleClick={() => setPantoneModal({ hex: swatch.hex, type: "logo" })} />
                     ))}
                   </div>
                   <p className="mt-2 text-xs text-muted">{t.inkCup}</p>
                   <div className="mt-1 flex flex-wrap gap-1">
                     <button type="button" className={`min-h-11 rounded-full border px-3 text-xs ${cupTint === null ? "border-ink" : "border-line"}`} onClick={() => setCupTint(null)}>{t.original}</button>
                     {STOCK.map((swatch) => (
-                      <button key={`c-${swatch.hex}`} type="button" aria-label={swatch.hex} className={`h-9 w-9 rounded-full border ${cupTint === swatch.hex ? "border-ink ring-2 ring-ink" : "border-line"}`} style={{ background: swatch.hex }} onClick={() => setCupTint(swatch.hex)} />
+                      <button key={`c-${swatch.hex}`} type="button" aria-label={swatch.hex} className={`h-9 w-9 rounded-full border ${cupTint === swatch.hex ? "border-ink ring-2 ring-ink" : "border-line"}`} style={{ background: swatch.hex }} onClick={() => setCupTint(swatch.hex)} onDoubleClick={() => setPantoneModal({ hex: swatch.hex, type: "cup" })} />
                     ))}
                   </div>
                   <label className="mt-2 block text-xs text-muted">
@@ -1122,6 +1124,37 @@ export function BlinkApp() {
           </div>
         );
       })()}
+      {pantoneModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setPantoneModal(null)}>
+          <div className="w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="font-display text-lg">Código Pantone</h3>
+            <p className="mt-1 text-sm text-muted">Cor: {pantoneModal.hex}</p>
+            <div className="mt-4 space-y-3">
+              <label className="block text-sm">
+                RGB
+                <input type="text" placeholder="255, 0, 0" className="mt-1 w-full rounded-xl border border-line px-3 py-2" id="pantone-rgb" defaultValue={customColors[pantoneModal.hex]?.rgb || ""} />
+              </label>
+              <label className="block text-sm">
+                CMYK
+                <input type="text" placeholder="0, 100, 100, 0" className="mt-1 w-full rounded-xl border border-line px-3 py-2" id="pantone-cmyk" defaultValue={customColors[pantoneModal.hex]?.cmyk || ""} />
+              </label>
+            </div>
+            <div className="mt-4 flex gap-2">
+              <button type="button" className="min-h-11 flex-1 rounded-xl bg-ink text-paper" onClick={() => {
+                const rgb = (document.getElementById("pantone-rgb") as HTMLInputElement)?.value || "";
+                const cmyk = (document.getElementById("pantone-cmyk") as HTMLInputElement)?.value || "";
+                setCustomColors((prev) => ({ ...prev, [pantoneModal.hex]: { rgb, cmyk } }));
+                setPantoneModal(null);
+              }}>Guardar</button>
+              <button type="button" className="min-h-11 rounded-xl border border-line px-4" onClick={() => {
+                setCustomColors((prev) => { const next = { ...prev }; delete next[pantoneModal.hex]; return next; });
+                setPantoneModal(null);
+              }}>Apagar</button>
+              <button type="button" className="min-h-11 rounded-xl border border-line px-4" onClick={() => setPantoneModal(null)}>Fechar</button>
+            </div>
+          </div>
+        </div>
+      )}
       {soloCard && (() => {
         const isBeer = soloCard === "beer";
         const item = isBeer ? cup : other;
