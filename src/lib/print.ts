@@ -666,8 +666,7 @@ export function viewsSheet(title: string, labels: readonly string[], shots: HTML
   const photoH = canvas.height - top - 72;
   frames.forEach((shot, index) => {
     const x = left + index * (cellW + gap);
-    ctx.fillStyle = "#f6f3ee";
-    ctx.fillRect(x, top, cellW, photoH);
+    // no background fill - keep white
     const scale = Math.min(cellW / shot.width, photoH / shot.height);
     const dw = shot.width * scale;
     const dh = shot.height * scale;
@@ -806,16 +805,15 @@ export function wrapPrint(source: HTMLCanvasElement | null, motif: HTMLCanvasEle
     return { x: minX, y: minY, w: Math.max(2, maxX - minX + 2), h: Math.max(2, maxY - minY + 2) };
   };
   if (motif) {
-    // Seamless pattern tiling - edges interconnect perfectly
+    // Seamless pattern - tile at native ratio so edges connect
     const iw = motif.width || 1;
     const ih = motif.height || 1;
-    // Scale to fit width while maintaining aspect for seamless repeat
-    const scale = wrap.width / (iw * 2);
-    const dw = iw * scale;
-    const dh = ih * scale;
-    // Tile seamlessly across full width and height
-    for (let ty = 0; ty < wrap.height; ty += dh) {
-      for (let tx = 0; tx < wrap.width; tx += dw) {
+    const tileW = Math.round(wrap.width / Math.ceil(wrap.width / iw));
+    const scale = tileW / iw;
+    const dw = tileW;
+    const dh = Math.round(ih * scale);
+    for (let ty = 0; ty < wrap.height + dh; ty += dh) {
+      for (let tx = 0; tx < wrap.width + dw; tx += dw) {
         ctx.drawImage(motif, tx, ty, dw, dh);
       }
     }
@@ -825,7 +823,7 @@ export function wrapPrint(source: HTMLCanvasElement | null, motif: HTMLCanvasEle
     if (box) {
       const aspect = box.w / box.h;
       const isSmall = box.w < 200 && box.h < 200;
-      const copies = isSmall ? 3 : aspect > 2.4 ? 2 : aspect < 0.85 ? 4 : 3;
+      const copies = Math.max(2, isSmall ? 3 : aspect > 2.4 ? 2 : aspect < 0.85 ? 4 : 3);
       const slot = wrap.width / copies;
       // Offset so first copy is centered at front (U=0.5 maps to front of cup)
       const offset = slot / 2;
