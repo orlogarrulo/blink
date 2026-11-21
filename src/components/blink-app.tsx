@@ -575,7 +575,7 @@ export function BlinkApp() {
     const turns = [0, Math.PI * 0.28, Math.PI];
     const solid = cupStills(
       {
-        texture: pattern ? wrapPrint(texture, motif, 0.9) : texture,
+        texture: wrapPrint(texture, motif, motif ? 0.9 : 0.6) ?? texture,
         top: item.top,
         bot: item.bot,
         heightMm: item.height,
@@ -769,7 +769,7 @@ export function BlinkApp() {
                 <div className="relative h-64 overflow-hidden rounded-2xl border border-line bg-white" onDoubleClick={() => setSoloCard("beer")}>
                   <CupView
                     key={`cup1-${chosenId}-${cupTint}-${liquid}`}
-                    texture={pattern ? wrapPrint(shown, pattern, 0.9) : shown}
+                    texture={wrapPrint(shown, pattern, pattern ? 0.9 : 0.6) ?? shown}
                     top={cup.top}
                     bot={cup.bot}
                     heightMm={cup.height}
@@ -784,7 +784,7 @@ export function BlinkApp() {
                 <div className="relative h-64 overflow-hidden rounded-2xl border border-line bg-white" onDoubleClick={() => setSoloCard("soda")}>
                   <CupView
                     key={`cup2-${right.sample}-${right.cupTint}-${rightLiquid}`}
-                    texture={rightPattern ? wrapPrint(otherTexture, rightPattern, 0.9) : otherTexture}
+                    texture={wrapPrint(otherTexture, rightPattern, rightPattern ? 0.9 : 0.6) ?? otherTexture}
                     top={other.top}
                     bot={other.bot}
                     heightMm={other.height}
