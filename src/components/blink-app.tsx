@@ -652,7 +652,7 @@ export function BlinkApp() {
                     heightMm={item.height}
                     cover={window ? window.h / item.height : 0.6}
                     spin={false}
-                    className="h-36 w-full"
+                    className="pointer-events-none h-36 w-full"
                   />
                   <span className="mt-1 block text-sm font-medium">{item.name}</span>
                   <span className="text-xs text-muted">
