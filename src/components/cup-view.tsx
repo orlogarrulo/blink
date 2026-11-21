@@ -270,12 +270,6 @@ function drawCup(
           ctx.drawImage(spec.texture, sx, 0, sw, spec.texture.height, left - 0.6, y0, Math.max(1.2, right - left + 1.2), y1 - y0);
           ctx.restore();
         }
-        // subtle IML integration: soft milky veil so print feels embedded
-        ctx.save();
-        ctx.globalAlpha = 0.18;
-        ctx.fillStyle = "rgba(255,255,255,0.9)";
-        ctx.fillRect(cx - topR, y0, topR * 2, y1 - y0);
-        ctx.restore();
         ctx.restore();
       }
 
