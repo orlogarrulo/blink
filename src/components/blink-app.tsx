@@ -17,7 +17,7 @@ import {
   type Process,
 } from "@/lib/catalog";
 import { LANGS, detectLang, localeFor, text, type Lang } from "@/lib/copy";
-import { canvasPdf, cmyk, composeLogos, composePattern, dominantColors, downloadBlob, openPdf, paintLabel, sheetCanvas, tintCanvas, viewsSheet, wrapPrint } from "@/lib/print";
+import { canvasPdf, cmyk, composeLogos, composePattern, dominantColors, downloadBlob, openPdf, paintLabel, sheetCanvas, techSheet, tintCanvas, viewsSheet, wrapPrint } from "@/lib/print";
 import { BOX_CUPS, airFreight, chargedQty, SHEET_KZ_PER_EUR, cupWeightScale } from "@/lib/freight";
 import { dialForMarket, detectMarket, KZ_PER_EUR, pricePair, type Market } from "@/lib/money";
 import { DIALS } from "@/lib/phone";
@@ -565,21 +565,14 @@ export function BlinkApp() {
       priceLine: `${unitMoney.primary} (${unitMoney.secondary}) / un  ·  ${lotMoney.primary} (${lotMoney.secondary})`,
       freightNote: `aéreo  ·  ${numbers.charge} ${item.name}`,
     });
-    const turns = [0, Math.PI * 0.28, Math.PI * 0.5];
-    const solid = cupStills(
-      {
-        texture: wrapPrint(texture, motif, motif ? 0.9 : itemArea.h / item.height) ?? texture,
-        top: item.top,
-        bot: item.bot,
-        heightMm: item.height,
-        cover: motif ? 0.9 : itemArea.h / item.height,
-        body,
-        liquid: side === "beer" ? liquid : rightLiquid,
-      },
-      turns,
-    );
-    const views = viewsSheet(item.name, t.angles.slice(0, 3), solid);
-    return [sheet, views];
+    const tech = techSheet({
+      cup: item,
+      area: itemArea,
+      process: itemProcess === "iml" ? "Quadricromia IML" : itemProcess === "serigrafia" ? "Serigrafia" : "Digital",
+      label: printLabel,
+      bodyColor: body,
+    });
+    return [sheet, tech];
   }
 
   async function saveCard(side: "beer" | "soda") {
