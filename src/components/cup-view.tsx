@@ -183,10 +183,10 @@ function drawCup(
         const imlRx1 = rxAt(band1);
         ctx.save();
         ctx.beginPath();
-        ctx.moveTo(cx - imlRx0 * 0.98, imlTop);
-        ctx.lineTo(cx + imlRx0 * 0.98, imlTop);
-        ctx.lineTo(cx + imlRx1 * 0.98, imlBot);
-        ctx.lineTo(cx - imlRx1 * 0.98, imlBot);
+        ctx.moveTo(cx - imlRx0, imlTop);
+        ctx.lineTo(cx + imlRx0, imlTop);
+        ctx.lineTo(cx + imlRx1, imlBot);
+        ctx.lineTo(cx - imlRx1, imlBot);
         ctx.closePath();
         ctx.fillStyle = spec.body;
         ctx.globalAlpha = 0.92;
