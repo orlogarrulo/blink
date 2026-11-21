@@ -499,7 +499,7 @@ export function sheetCanvas(options: {
   ctx.fillStyle = "#7A6A5C";
   ctx.font = "400 16px Outfit, sans-serif";
   const notes = [
-    "IML: 300 dpi, CMYK, textos em contorno, base branca. Fora da janela: 2 mm acima e abaixo e 4 mm extra no topo.",
+    "IML: 300 dpi mínimo, CMYK + Pantone. Textos em contorno (mín. 5 pt). Linhas positivas ≥ 0.15 mm. Camada White Ink se filme transparente. Sangria 2.5–5 mm. Zona segura 1.5–3 mm. Folga de costura vertical (sem sobreposição).",
     "Serigrafia: vetor, Pantone Solid Coated, sem gradiente. Linha mínima 0,35 mm (1 tinta) ou 0,60 mm (2 tintas).",
     "Digital: só ECO28, ECO30 e ECO60, a 300 dpi CMYK. O polipropileno fica translúcido onde não há tinta.",
     "Prazo é estimativa de estúdio: 8 dias úteis (serigrafia e digital) ou 20 (IML), mais o frete.",
@@ -617,7 +617,8 @@ export function techSheet(options: {
   ctx.fillStyle = "#1A120C";
   const specsY = boxY + boxH + 80;
   ctx.fillText(`Copo: boca ${options.cup.top} mm  ·  base ${options.cup.bot} mm  ·  altura ${options.cup.height} mm`, 60, specsY);
-  ctx.fillText(`Margem de segurança: 3 mm (tracejado). Impressão não alcança a borda da boca.`, 60, specsY + 28);
+  ctx.fillText(`Zona segura: 1.5–3 mm (tracejado amarelo). Sangria: 2.5–5 mm (tracejado vermelho).`, 60, specsY + 28);
+  ctx.fillText(`IML: sem sobreposição — folga de costura vertical. CMYK + Pantone. White Ink se transparente.`, 60, specsY + 52);
 
   // Safety margin (inside) - 3mm
   ctx.setLineDash([6, 4]);
@@ -629,7 +630,7 @@ export function techSheet(options: {
   ctx.setLineDash([]);
 
   // Bleed margin (outside) - 3mm beyond print area
-  const bleedMm = 3;
+  const bleedMm = 3; // within 2.5–5 mm IML standard
   const bleedPx = bleedMm / options.area.w * boxW;
   ctx.setLineDash([3, 3]);
   ctx.strokeStyle = "#d63a3a";
