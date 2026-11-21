@@ -846,14 +846,14 @@ export function BlinkApp() {
                   <div className="mt-1 flex flex-wrap gap-1">
                     <button type="button" className={`min-h-11 rounded-full border px-3 text-xs ${tint === null ? "border-ink" : "border-line"}`} onClick={() => setTint(null)}>{t.original}</button>
                     {STOCK.map((swatch) => (
-                      <button key={`l-${swatch.hex}`} type="button" aria-label={swatch.hex} className={`h-9 w-9 rounded-full border ${tint === swatch.hex ? "border-ink ring-2 ring-ink" : "border-line"}`} style={{ background: swatch.hex }} onClick={() => setTint(swatch.hex)} onDoubleClick={() => setPantoneModal({ hex: swatch.hex, type: "logo" })} />
+                      <button key={`l-${swatch.hex}`} type="button" aria-label={swatch.hex} className={`h-9 w-9 rounded-full border ${tint === swatch.hex ? "border-ink ring-2 ring-ink" : "border-line"}`} style={{ background: swatch.hex }} onClick={(e) => { if (e.detail === 2) setPantoneModal({ hex: swatch.hex, type: "logo" }); else setTint(swatch.hex); }} />
                     ))}
                   </div>
                   <p className="mt-2 text-xs text-muted">{t.inkCup}</p>
                   <div className="mt-1 flex flex-wrap gap-1">
                     <button type="button" className={`min-h-11 rounded-full border px-3 text-xs ${cupTint === null ? "border-ink" : "border-line"}`} onClick={() => setCupTint(null)}>{t.original}</button>
                     {STOCK.map((swatch) => (
-                      <button key={`c-${swatch.hex}`} type="button" aria-label={swatch.hex} className={`h-9 w-9 rounded-full border ${cupTint === swatch.hex ? "border-ink ring-2 ring-ink" : "border-line"}`} style={{ background: swatch.hex }} onClick={() => setCupTint(swatch.hex)} onDoubleClick={() => setPantoneModal({ hex: swatch.hex, type: "cup" })} />
+                      <button key={`c-${swatch.hex}`} type="button" aria-label={swatch.hex} className={`h-9 w-9 rounded-full border ${cupTint === swatch.hex ? "border-ink ring-2 ring-ink" : "border-line"}`} style={{ background: swatch.hex }} onClick={(e) => { if (e.detail === 2) setPantoneModal({ hex: swatch.hex, type: "cup" }); else setCupTint(swatch.hex); }} />
                     ))}
                   </div>
                   <label className="mt-2 block text-xs text-muted">
