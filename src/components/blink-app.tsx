@@ -933,6 +933,7 @@ export function BlinkApp() {
                 ) : null}
               </div>
               {chosen ? <WindowPlate area={area} process={process} canvas={chosen} caption={t} /> : null}
+              {rightShown && otherArea ? <WindowPlate area={otherArea} process={otherProcess} canvas={rightShown} caption={t} /> : null}
             </div>
             </section>
           ) : null}
