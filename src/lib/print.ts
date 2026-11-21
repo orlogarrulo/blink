@@ -401,6 +401,7 @@ export function sheetCanvas(options: {
   qty: number;
   colors: { hex: string }[];
   label: HTMLCanvasElement;
+  bodyColor?: string | null;
   delivery: string;
   eventDate: string;
   priceLine: string;
@@ -442,6 +443,10 @@ export function sheetCanvas(options: {
   ctx.strokeRect(x - 18, y - 18, dw + 36, dh + 36);
   ctx.fillStyle = "#fffaf3";
   ctx.fillRect(x, y, dw, dh);
+  if (options.bodyColor) {
+    ctx.fillStyle = options.bodyColor;
+    ctx.fillRect(x, y, dw, dh);
+  }
   ctx.drawImage(area, x, y, dw, dh);
   const windowMm = options.process === "iml" ? options.cup.iml : options.process === "digital" ? options.cup.digital : options.cup.screen;
   const safetyMm = options.process === "iml" ? 3 : 2;
