@@ -121,7 +121,7 @@ function drawCup(
       const rxAt = (t: number) => topR + (botR - topR) * t;
       const strips = width < 180 ? 64 : width < 420 ? 120 : 168;
 
-      const lipPx = Math.max(ry + Math.max(1, topR * 0.015), bodyH * 0.01);
+      const lipPx = Math.max(2, topR * 0.008);
       const footMin = bodyH * 0.065;
       // Pattern/logo fills from just below the rim to near the bottom
       const band0 = lipPx / bodyH;
@@ -177,7 +177,7 @@ function drawCup(
 
       // IML print layer: opaque color band over the translucent cup, logo sits on top
       if (spec.body) {
-        const imlTop = topCy + band0 * bodyH;
+        const imlTop = topCy + band0 * bodyH - 2;
         const imlBot = topCy + band1 * bodyH;
         const imlRx0 = rxAt(band0);
         const imlRx1 = rxAt(band1);
