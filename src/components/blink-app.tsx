@@ -585,6 +585,19 @@ export function BlinkApp() {
       },
       turns,
     );
+    // Flip third cup upside down (mouth facing down)
+    if (solid[2]) {
+      const flipped = document.createElement("canvas");
+      flipped.width = solid[2].width;
+      flipped.height = solid[2].height;
+      const fctx = flipped.getContext("2d");
+      if (fctx) {
+        fctx.translate(flipped.width / 2, flipped.height / 2);
+        fctx.rotate(Math.PI);
+        fctx.drawImage(solid[2], -flipped.width / 2, -flipped.height / 2);
+        solid[2] = flipped;
+      }
+    }
     const views = viewsSheet(item.name, t.angles.slice(0, 3), solid);
     return [sheet, tech, views];
   }
@@ -1091,12 +1104,13 @@ export function BlinkApp() {
               <p className="text-xs text-muted">Material em detalhe. Clica fora ou em Fechar para voltar.</p>
               <div className="mt-4 h-[60vh] rounded-2xl bg-white">
                 <CupView
-                  texture={null}
-                  body={cupTint}
+                  texture={item.id === cup.id ? shown : item.id === compareId ? otherTexture : null}
+                  body={item.id === cup.id ? cupTint : item.id === compareId ? right.cupTint : null}
                   top={item.top}
                   bot={item.bot}
                   heightMm={item.height}
                   cover={win ? win.h / item.height : 0.6}
+                  liquid={item.id === cup.id ? liquid : item.id === compareId ? rightLiquid : "none"}
                   spin={true}
                   className="h-full w-full"
                 />
