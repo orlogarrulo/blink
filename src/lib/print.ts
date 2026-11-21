@@ -805,25 +805,18 @@ export function wrapPrint(source: HTMLCanvasElement | null, motif: HTMLCanvasEle
     return { x: minX, y: minY, w: Math.max(2, maxX - minX + 2), h: Math.max(2, maxY - minY + 2) };
   };
   if (motif) {
-    // Pattern fills the entire texture height (full cup coverage)
-    const copies = 4;
-    const slot = wrap.width / copies;
+    // Seamless pattern tiling - edges interconnect perfectly
     const iw = motif.width || 1;
     const ih = motif.height || 1;
-    const fullH = wrap.height;
-    for (let i = 0; i < copies; i += 1) {
-      const scale = Math.max(slot / iw, fullH / ih);
-      const dw = iw * scale;
-      const dh = ih * scale;
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(i * slot, 0, slot, fullH);
-      ctx.clip();
-      // Tile vertically to fill full height
-      for (let ty = 0; ty < fullH; ty += dh) {
-        ctx.drawImage(motif, i * slot + (slot - dw) / 2, ty, dw, dh);
+    // Scale to fit width while maintaining aspect for seamless repeat
+    const scale = wrap.width / (iw * 2);
+    const dw = iw * scale;
+    const dh = ih * scale;
+    // Tile seamlessly across full width and height
+    for (let ty = 0; ty < wrap.height; ty += dh) {
+      for (let tx = 0; tx < wrap.width; tx += dw) {
+        ctx.drawImage(motif, tx, ty, dw, dh);
       }
-      ctx.restore();
     }
   }
   if (source) {
