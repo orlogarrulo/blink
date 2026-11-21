@@ -239,7 +239,10 @@ function drawCup(
           const side = Math.abs(Math.sin(mid));
           ctx.globalAlpha = 1 - side * side * 0.04;
           ctx.globalCompositeOperation = "source-over";
+          ctx.globalAlpha = 1;
+          ctx.globalCompositeOperation = "source-over";
           ctx.drawImage(spec.texture, sx, 0, sw, spec.texture.height, left - 0.6, y0, Math.max(1.2, right - left + 1.2), y1 - y0);
+          ctx.globalAlpha = 1;
           ctx.restore();
         }
         // subtle IML integration: soft milky veil so print feels embedded
