@@ -175,6 +175,34 @@ function drawCup(
       ctx.fillRect(cx - topR, topCy, topR * 2, bodyH);
       ctx.restore();
 
+      // IML print layer: opaque color band over the translucent cup, logo sits on top
+      if (spec.body) {
+        const imlTop = topCy + band0 * bodyH;
+        const imlBot = topCy + band1 * bodyH;
+        const imlRx0 = rxAt(band0);
+        const imlRx1 = rxAt(band1);
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(cx - imlRx0 * 0.98, imlTop);
+        ctx.lineTo(cx + imlRx0 * 0.98, imlTop);
+        ctx.lineTo(cx + imlRx1 * 0.98, imlBot);
+        ctx.lineTo(cx - imlRx1 * 0.98, imlBot);
+        ctx.closePath();
+        ctx.fillStyle = spec.body;
+        ctx.globalAlpha = 0.92;
+        ctx.fill();
+        ctx.globalAlpha = 1;
+        // slight sheen on the IML layer
+        const imlSheen = ctx.createLinearGradient(cx - imlRx0, 0, cx + imlRx0, 0);
+        imlSheen.addColorStop(0, "rgba(255,255,255,0)");
+        imlSheen.addColorStop(0.25, "rgba(255,255,255,0.18)");
+        imlSheen.addColorStop(0.4, "rgba(255,255,255,0)");
+        imlSheen.addColorStop(1, "rgba(255,255,255,0)");
+        ctx.fillStyle = imlSheen;
+        ctx.fill();
+        ctx.restore();
+      }
+
       if (spec.liquid && spec.liquid !== "none") {
         const liqLevel = spec.liquid === "beer" ? 0.82 : 0.88;
         const liqTop = topCy + bodyH * (1 - liqLevel);
@@ -239,10 +267,7 @@ function drawCup(
           const side = Math.abs(Math.sin(mid));
           ctx.globalAlpha = 1 - side * side * 0.04;
           ctx.globalCompositeOperation = "source-over";
-          ctx.globalAlpha = 1;
-          ctx.globalCompositeOperation = "source-over";
           ctx.drawImage(spec.texture, sx, 0, sw, spec.texture.height, left - 0.6, y0, Math.max(1.2, right - left + 1.2), y1 - y0);
-          ctx.globalAlpha = 1;
           ctx.restore();
         }
         // subtle IML integration: soft milky veil so print feels embedded
