@@ -661,7 +661,7 @@ export function viewsSheet(title: string, labels: readonly string[], shots: HTML
   const frames = shots.slice(0, 3);
   const gap = 18;
   const left = 40;
-  const top = 96;
+  const top = 120;
   const cellW = (canvas.width - left * 2 - gap * Math.max(0, frames.length - 1)) / Math.max(1, frames.length);
   const photoH = canvas.height - top - 72;
   frames.forEach((shot, index) => {
@@ -673,7 +673,9 @@ export function viewsSheet(title: string, labels: readonly string[], shots: HTML
     ctx.drawImage(shot, x + (cellW - dw) / 2, top + (photoH - dh) / 2, dw, dh);
     ctx.fillStyle = "#1A120C";
     ctx.font = "500 16px Outfit, sans-serif";
-    ctx.fillText(labels[index] || "", x, top + photoH + 28);
+    ctx.textAlign = "center";
+    ctx.fillText(labels[index] || "", x + cellW / 2, top - 12);
+    ctx.textAlign = "left";
   });
   return canvas;
 }
