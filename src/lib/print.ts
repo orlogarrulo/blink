@@ -619,13 +619,29 @@ export function techSheet(options: {
   ctx.fillText(`Copo: boca ${options.cup.top} mm  ·  base ${options.cup.bot} mm  ·  altura ${options.cup.height} mm`, 60, specsY);
   ctx.fillText(`Margem de segurança: 3 mm (tracejado). Impressão não alcança a borda da boca.`, 60, specsY + 28);
 
-  // Safety margin indicator
+  // Safety margin (inside) - 3mm
   ctx.setLineDash([6, 4]);
   ctx.strokeStyle = "#e6b325";
   ctx.lineWidth = 1;
-  const margin = 3 / options.area.w * boxW;
-  ctx.strokeRect(boxX + margin, boxY + margin, boxW - margin * 2, boxH - margin * 2);
+  const safetyMm = 3;
+  const safetyPx = safetyMm / options.area.w * boxW;
+  ctx.strokeRect(boxX + safetyPx, boxY + safetyPx, boxW - safetyPx * 2, boxH - safetyPx * 2);
   ctx.setLineDash([]);
+
+  // Bleed margin (outside) - 3mm beyond print area
+  const bleedMm = 3;
+  const bleedPx = bleedMm / options.area.w * boxW;
+  ctx.setLineDash([3, 3]);
+  ctx.strokeStyle = "#d63a3a";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(boxX - bleedPx, boxY - bleedPx, boxW + bleedPx * 2, boxH + bleedPx * 2);
+  ctx.setLineDash([]);
+
+  // Bleed label
+  ctx.fillStyle = "#d63a3a";
+  ctx.font = "500 14px Outfit, sans-serif";
+  ctx.textAlign = "left";
+  ctx.fillText(`Sangria: ${bleedMm} mm (tracejado vermelho)`, 60, specsY + 56);
 
   return canvas;
 }
