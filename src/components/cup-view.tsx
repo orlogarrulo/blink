@@ -122,7 +122,7 @@ function drawCup(
       const strips = width < 180 ? 64 : width < 420 ? 120 : 168;
 
       const lipPx = Math.max(2, topR * 0.008);
-      const footMin = bodyH * 0.065;
+      const footMin = bodyH * 0.02;
       // Pattern/logo fills from just below the rim to near the bottom
       const band0 = lipPx / bodyH;
       const band1 = 1 - (footMin / bodyH);
