@@ -173,6 +173,21 @@ export function BlinkApp() {
   const [soloCard, setSoloCard] = useState<"beer" | "soda" | null>(null);
   const [gridTarget, setGridTarget] = useState<"cup1" | "cup2">("cup1");
   const [pantoneModal, setPantoneModal] = useState<{ hex: string; type: "logo" | "cup" } | null>(null);
+  const clickGate = useRef<{ key: string; timer: number } | null>(null);
+  function armClick(key: string, single: () => void, double: () => void) {
+    if (clickGate.current?.key === key) {
+      window.clearTimeout(clickGate.current.timer);
+      clickGate.current = null;
+      double();
+      return;
+    }
+    if (clickGate.current) window.clearTimeout(clickGate.current.timer);
+    const timer = window.setTimeout(() => {
+      clickGate.current = null;
+      single();
+    }, 280);
+    clickGate.current = { key, timer };
+  }
   const [customColors, setCustomColors] = useState<Record<string, { rgb: string; cmyk: string }>>({});
   const [rightLiquid, setRightLiquid] = useState<"none" | "beer" | "soda">("none");
   const [quote, setQuote] = useState<{ cupId: string; qty: number; unitKz: number; freightKz: number; lotKz: number } | null>(null);
@@ -664,14 +679,10 @@ export function BlinkApp() {
               <li key={item.id}>
                 <button
                   type="button"
-                  onClick={(e) => {
-                    if (e.detail === 2) {
-                      setZoomedCup(item.id);
-                    } else {
-                      if (gridTarget === "cup1") chooseCup(item.id);
-                      else setCompareId(item.id);
-                    }
-                  }}
+                  onClick={() => armClick(`grid-${item.id}`, () => {
+                    if (gridTarget === "cup1") chooseCup(item.id);
+                    else setCompareId(item.id);
+                  }, () => setZoomedCup(item.id))}
                   className={`w-full rounded-3xl border bg-card px-2 pb-3 pt-2 text-left ${isCup1 ? "cup-on border-ink ring-2 ring-ink" : isCup2 ? "border-urucum ring-2 ring-urucum" : "border-line"}`}
                   title="Duplo clique para ampliar o material"
                 >
@@ -852,26 +863,14 @@ export function BlinkApp() {
                   <div className="mt-1 flex flex-wrap gap-1">
                     <button type="button" className={`min-h-11 rounded-full border px-3 text-xs ${tint === null ? "border-ink" : "border-line"}`} onClick={() => setTint(null)}>{t.original}</button>
                     {STOCK.map((swatch) => (
-                      <button key={`l-${swatch.hex}`} type="button" aria-label={swatch.hex} className={`h-9 w-9 rounded-full border ${tint === swatch.hex ? "border-ink ring-2 ring-ink" : "border-line"}`} style={{ background: swatch.hex }} onClick={(e) => {
-                        if (e.detail === 2) {
-                          setPantoneModal({ hex: swatch.hex, type: "logo" });
-                        } else {
-                          setTimeout(() => { if (!pantoneModal) setTint(swatch.hex); }, 200);
-                        }
-                      }} />
+                      <button key={`l-${swatch.hex}`} type="button" aria-label={swatch.hex} className={`h-9 w-9 rounded-full border ${tint === swatch.hex ? "border-ink ring-2 ring-ink" : "border-line"}`} style={{ background: swatch.hex }} onClick={() => armClick(`logo1-${swatch.hex}`, () => setTint(swatch.hex), () => setPantoneModal({ hex: swatch.hex, type: "logo" }))} />
                     ))}
                   </div>
                   <p className="mt-2 text-xs text-muted">{t.inkCup}</p>
                   <div className="mt-1 flex flex-wrap gap-1">
                     <button type="button" className={`min-h-11 rounded-full border px-3 text-xs ${cupTint === null ? "border-ink" : "border-line"}`} onClick={() => setCupTint(null)}>{t.original}</button>
                     {STOCK.map((swatch) => (
-                      <button key={`c-${swatch.hex}`} type="button" aria-label={swatch.hex} className={`h-9 w-9 rounded-full border ${cupTint === swatch.hex ? "border-ink ring-2 ring-ink" : "border-line"}`} style={{ background: swatch.hex }} onClick={(e) => {
-                        if (e.detail === 2) {
-                          setPantoneModal({ hex: swatch.hex, type: "cup" });
-                        } else {
-                          setTimeout(() => { if (!pantoneModal) setCupTint(swatch.hex); }, 200);
-                        }
-                      }} />
+                      <button key={`c-${swatch.hex}`} type="button" aria-label={swatch.hex} className={`h-9 w-9 rounded-full border ${cupTint === swatch.hex ? "border-ink ring-2 ring-ink" : "border-line"}`} style={{ background: swatch.hex }} onClick={() => armClick(`cup1-${swatch.hex}`, () => setCupTint(swatch.hex), () => setPantoneModal({ hex: swatch.hex, type: "cup" }))} />
                     ))}
                   </div>
                   <label className="mt-2 block text-xs text-muted">
@@ -933,14 +932,14 @@ export function BlinkApp() {
                   <div className="mt-1 flex flex-wrap gap-1">
                     <button type="button" className={`min-h-11 rounded-full border px-3 text-xs ${right.tint === null ? "border-ink" : "border-line"}`} onClick={() => setRight((current) => ({ ...current, tint: null }))}>{t.original}</button>
                     {STOCK.map((swatch) => (
-                      <button key={`rl-${swatch.hex}`} type="button" aria-label={swatch.hex} className={`h-9 w-9 rounded-full border ${right.tint === swatch.hex ? "border-ink ring-2 ring-ink" : "border-line"}`} style={{ background: swatch.hex }} onClick={() => setRight((current) => ({ ...current, tint: swatch.hex }))} />
+                      <button key={`rl-${swatch.hex}`} type="button" aria-label={swatch.hex} className={`h-9 w-9 rounded-full border ${right.tint === swatch.hex ? "border-ink ring-2 ring-ink" : "border-line"}`} style={{ background: swatch.hex }} onClick={() => armClick(`logo2-${swatch.hex}`, () => setRight((current) => ({ ...current, tint: swatch.hex })), () => setPantoneModal({ hex: swatch.hex, type: "logo" }))} />
                     ))}
                   </div>
                   <p className="mt-2 text-xs text-muted">{t.inkCup}</p>
                   <div className="mt-1 flex flex-wrap gap-1">
                     <button type="button" className={`min-h-11 rounded-full border px-3 text-xs ${right.cupTint === null ? "border-ink" : "border-line"}`} onClick={() => setRight((current) => ({ ...current, cupTint: null }))}>{t.original}</button>
                     {STOCK.map((swatch) => (
-                      <button key={`rc-${swatch.hex}`} type="button" aria-label={swatch.hex} className={`h-9 w-9 rounded-full border ${right.cupTint === swatch.hex ? "border-ink ring-2 ring-ink" : "border-line"}`} style={{ background: swatch.hex }} onClick={() => setRight((current) => ({ ...current, cupTint: swatch.hex }))} />
+                      <button key={`rc-${swatch.hex}`} type="button" aria-label={swatch.hex} className={`h-9 w-9 rounded-full border ${right.cupTint === swatch.hex ? "border-ink ring-2 ring-ink" : "border-line"}`} style={{ background: swatch.hex }} onClick={() => armClick(`cup2-${swatch.hex}`, () => setRight((current) => ({ ...current, cupTint: swatch.hex })), () => setPantoneModal({ hex: swatch.hex, type: "cup" }))} />
                     ))}
                   </div>
                   <label className="mt-2 block text-xs text-muted">
