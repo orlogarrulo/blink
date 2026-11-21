@@ -123,9 +123,9 @@ function drawCup(
 
       const lipPx = Math.max(ry + Math.max(4, topR * 0.08), bodyH * 0.12);
       const footMin = bodyH * 0.065;
-      const spanPx = Math.min(Math.max(bodyH * 0.18, bodyH * spec.cover), bodyH - lipPx - footMin);
+      // Pattern/logo fills from just below the rim to near the bottom
       const band0 = lipPx / bodyH;
-      const band1 = (lipPx + spanPx) / bodyH;
+      const band1 = 1 - (footMin / bodyH);
 
       ctx.fillStyle = "rgba(176, 184, 190, 0.2)";
       ctx.beginPath();
