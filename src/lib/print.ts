@@ -83,6 +83,15 @@ function drawCover(
 }
 
 export function composePattern(images: CanvasImageSource[]): HTMLCanvasElement {
+  if (images.length === 1) {
+    const [iw, ih] = sourceSize(images[0]);
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(2, Math.round(iw));
+    canvas.height = Math.max(2, Math.round(ih));
+    const ctx = canvas.getContext("2d");
+    if (ctx) ctx.drawImage(images[0], 0, 0, canvas.width, canvas.height);
+    return canvas;
+  }
   const canvas = document.createElement("canvas");
   canvas.width = 1600;
   canvas.height = 2000;
@@ -775,6 +784,23 @@ export function downloadBlob(blob: Blob, name: string) {
   URL.revokeObjectURL(url);
 }
 
+function knockWhite(source: HTMLCanvasElement | null): HTMLCanvasElement | null {
+  if (!source) return null;
+  const out = document.createElement("canvas");
+  out.width = source.width;
+  out.height = source.height;
+  const ctx = out.getContext("2d", { willReadFrequently: true });
+  if (!ctx) return source;
+  ctx.drawImage(source, 0, 0);
+  const frame = ctx.getImageData(0, 0, out.width, out.height);
+  const data = frame.data;
+  for (let i = 0; i < data.length; i += 4) {
+    if (data[i] > 246 && data[i + 1] > 246 && data[i + 2] > 246) data[i + 3] = 0;
+  }
+  ctx.putImageData(frame, 0, 0);
+  return out;
+}
+
 export function wrapPrint(source: HTMLCanvasElement | null, motif: HTMLCanvasElement | null, spanCover = 0.6): HTMLCanvasElement | null {
   if (!source && !motif) return null;
   const wrap = document.createElement("canvas");
@@ -807,24 +833,23 @@ export function wrapPrint(source: HTMLCanvasElement | null, motif: HTMLCanvasEle
     return { x: minX, y: minY, w: Math.max(2, maxX - minX + 2), h: Math.max(2, maxY - minY + 2) };
   };
   if (motif) {
-    // Seamless full coverage - tile to fill entire texture height and width
-    const iw = motif.width || 1;
-    const ih = motif.height || 1;
-    const cols = Math.max(3, Math.round(wrap.width / iw));
-    const dw = Math.ceil(wrap.width / cols);
-    const dh = Math.ceil(dw * (ih / iw));
-    for (let ty = 0; ty < wrap.height + dh; ty += dh) {
+    const iw = Math.max(1, motif.width);
+    const ih = Math.max(1, motif.height);
+    const tile = Math.min(520, Math.max(iw, 180));
+    const scale = tile / iw;
+    const dw = iw * scale;
+    const dh = ih * scale;
+    for (let ty = 0; ty < wrap.height; ty += dh) {
       for (let tx = 0; tx < wrap.width; tx += dw) {
-        ctx.drawImage(motif, tx, ty, dw + 1, dh + 1);
+        ctx.drawImage(motif, tx - 0.5, ty - 0.5, dw + 1, dh + 1);
       }
     }
   }
-  if (source) {
-    const box = inkBox(source);
+  const stamp = motif ? knockWhite(source) : source;
+  if (stamp) {
+    const box = inkBox(stamp);
     if (box) {
-      const aspect = box.w / box.h;
-      const isSmall = box.w < 200 && box.h < 200;
-      const copies = 2; // always duplicate logo
+      const copies = 2;
       const slot = wrap.width / copies;
       // Offset so first copy is centered at front (U=0.5 maps to front of cup)
       const offset = slot / 2;
@@ -833,7 +858,7 @@ export function wrapPrint(source: HTMLCanvasElement | null, motif: HTMLCanvasEle
         const dw = box.w * scale;
         const dh = box.h * scale;
         const x = ((i * slot + offset) % wrap.width);
-        ctx.drawImage(source, box.x, box.y, box.w, box.h, x - dw / 2, y + (band - dh) / 2, dw, dh);
+        ctx.drawImage(stamp, box.x, box.y, box.w, box.h, x - dw / 2, y + (band - dh) / 2, dw, dh);
       }
     }
   }
