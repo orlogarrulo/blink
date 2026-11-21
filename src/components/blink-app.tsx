@@ -746,7 +746,7 @@ export function BlinkApp() {
                 <div className="relative h-64 overflow-hidden rounded-2xl border border-line bg-white" onDoubleClick={() => setSoloCard("beer")}>
                   <CupView
                     key={`cup1-${chosenId}-${cupTint}-${liquid}`}
-                    texture={wrapPrint(shown, pattern, pattern ? 0.9 : area.h / cup.height) ?? shown}
+                    texture={pattern ? wrapPrint(shown, pattern, 0.9) : shown}
                     top={cup.top}
                     bot={cup.bot}
                     heightMm={cup.height}
@@ -761,7 +761,7 @@ export function BlinkApp() {
                 <div className="relative h-64 overflow-hidden rounded-2xl border border-line bg-white" onDoubleClick={() => setSoloCard("soda")}>
                   <CupView
                     key={`cup2-${right.sample}-${right.cupTint}-${rightLiquid}`}
-                    texture={wrapPrint(otherTexture, rightPattern, rightPattern ? 0.9 : otherArea ? otherArea.h / other.height : 0.6) ?? otherTexture}
+                    texture={rightPattern ? wrapPrint(otherTexture, rightPattern, 0.9) : otherTexture}
                     top={other.top}
                     bot={other.bot}
                     heightMm={other.height}
