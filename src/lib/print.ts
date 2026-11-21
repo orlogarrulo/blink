@@ -807,12 +807,12 @@ export function wrapPrint(source: HTMLCanvasElement | null, motif: HTMLCanvasEle
     return { x: minX, y: minY, w: Math.max(2, maxX - minX + 2), h: Math.max(2, maxY - minY + 2) };
   };
   if (motif) {
-    // Seamless full coverage - tile to fill entire texture
+    // Seamless full coverage - tile to fill entire texture height and width
     const iw = motif.width || 1;
     const ih = motif.height || 1;
-    const cols = Math.max(2, Math.round(wrap.width / iw));
-    const dw = wrap.width / cols;
-    const dh = dw * (ih / iw);
+    const cols = Math.max(3, Math.round(wrap.width / iw));
+    const dw = Math.ceil(wrap.width / cols);
+    const dh = Math.ceil(dw * (ih / iw));
     for (let ty = 0; ty < wrap.height + dh; ty += dh) {
       for (let tx = 0; tx < wrap.width; tx += dw) {
         ctx.drawImage(motif, tx, ty, dw + 1, dh + 1);
