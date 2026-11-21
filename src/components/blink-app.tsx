@@ -572,7 +572,7 @@ export function BlinkApp() {
       label: printLabel,
       bodyColor: body,
     });
-    const turns = [0, Math.PI * 0.28, Math.PI * 0.5];
+    const turns = [0, Math.PI * 0.28, Math.PI];
     const solid = cupStills(
       {
         texture: pattern ? wrapPrint(texture, motif, 0.9) : texture,
