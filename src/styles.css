@@ -27,11 +27,21 @@
     outline-offset: 2px;
   }
 
+  html,
   body {
     background: var(--color-paper);
     color: var(--color-ink);
     font-family: var(--font-sans);
     overflow-x: hidden;
+    max-width: 100%;
+  }
+
+  button,
+  a,
+  input,
+  select,
+  label {
+    touch-action: manipulation;
   }
 }
 
