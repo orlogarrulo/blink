@@ -54,7 +54,7 @@ export function Lineup({ texture, top, bot, heightMm, cover, otherTop, otherBot,
       const { RoomEnvironment } = await import("three/addons/environments/RoomEnvironment.js");
       const texLoader = new THREE.TextureLoader();
       const loadTex = (url: string) => new Promise<InstanceType<typeof THREE.Texture>>((resolve) => {
-        texLoader.load(url, (t) => { t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; resolve(t); }, undefined, () => resolve(new THREE.Texture()));
+        texLoader.load(url, (t: { colorSpace: string; wrapS: number; wrapT: number }) => { t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; resolve(t); }, undefined, () => resolve(new THREE.Texture()));
       });
       const [beerTex, foamTex, sodaTex] = await Promise.all([
         loadTex("/textures/beer.jpg"),

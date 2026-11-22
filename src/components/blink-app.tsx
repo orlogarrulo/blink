@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { CupView, cupStills } from "@/components/cup-view";
-import { Lineup } from "@/components/lineup";
+import { useDeferredValue, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { CupStudio, type StudioShot } from "@/components/cup-studio";
+import { CupView } from "@/components/cup-view";
+import { OtherColorDialog } from "@/components/other-color-dialog";
 import {
   CUPS,
-  PROCESS_LABEL,
   areaFor,
   cupById,
   deliveryDate,
@@ -17,7 +17,9 @@ import {
   type Process,
 } from "@/lib/catalog";
 import { LANGS, detectLang, localeFor, text, type Lang } from "@/lib/copy";
-import { canvasPdf, cmyk, composeLogos, composePattern, dominantColors, downloadBlob, openPdf, paintLabel, sheetCanvas, techSheet, tintCanvas, viewsSheet, wrapPrint } from "@/lib/print";
+import { cupStills } from "@/lib/cup-draw";
+import { composeHeroTexture, tilePattern } from "@/lib/cup-texture";
+import { canvasPdf, cmyk, composeLogos, composePattern, dominantColors, downloadBlob, paintLabel, sheetCanvas, techSheet, tintCanvas, viewsSheet } from "@/lib/print";
 import { BOX_CUPS, airFreight, chargedQty, SHEET_KZ_PER_EUR, cupWeightScale } from "@/lib/freight";
 import { dialForMarket, detectMarket, KZ_PER_EUR, pricePair, type Market } from "@/lib/money";
 import { DIALS } from "@/lib/phone";
@@ -115,7 +117,9 @@ async function readArt(file: File): Promise<HTMLImageElement> {
     const data = new Uint8Array(await file.arrayBuffer());
     const doc = await pdfjs.getDocument({ data }).promise;
     const page = await doc.getPage(1);
-    const viewport = page.getViewport({ scale: 4 });
+    const base = page.getViewport({ scale: 1 });
+    const scale = Math.min(3, 2000 / Math.max(base.width, base.height));
+    const viewport = page.getViewport({ scale });
     const canvas = document.createElement("canvas");
     canvas.width = viewport.width;
     canvas.height = viewport.height;
@@ -162,38 +166,22 @@ export function BlinkApp() {
     cupTint: null,
     process: null,
   });
-  const [spin, setSpin] = useState(true);
-  const [zoomedCup, setZoomedCup] = useState<string | null>(null);
+  const [spin, setSpin] = useState(false);
   const [renderMode, setRenderMode] = useState<"frost" | "clear" | "studio">("frost");
   const [vectorLabel, setVectorLabel] = useState<HTMLCanvasElement | null>(null);
   const [tracing, setTracing] = useState(false);
   const [tint, setTint] = useState<string | null>(null);
   const [cupTint, setCupTint] = useState<string | null>(null);
   const [liquid, setLiquid] = useState<"none" | "beer" | "soda">("none");
-  const [soloCard, setSoloCard] = useState<"beer" | "soda" | null>(null);
   const [gridTarget, setGridTarget] = useState<"cup1" | "cup2">("cup1");
-  const [pantoneModal, setPantoneModal] = useState<{ hex: string; type: "logo" | "cup" } | null>(null);
-  const clickGate = useRef<{ key: string; timer: number } | null>(null);
-  function armClick(key: string, single: () => void, double: () => void) {
-    if (clickGate.current?.key === key) {
-      window.clearTimeout(clickGate.current.timer);
-      clickGate.current = null;
-      double();
-      return;
-    }
-    if (clickGate.current) window.clearTimeout(clickGate.current.timer);
-    const timer = window.setTimeout(() => {
-      clickGate.current = null;
-      single();
-    }, 280);
-    clickGate.current = { key, timer };
-  }
-  const [customColors, setCustomColors] = useState<Record<string, { rgb: string; cmyk: string }>>({});
+  const [colorDialog, setColorDialog] = useState<null | "cup1" | "cup2">(null);
+  const [zoom, setZoom] = useState(1);
+  const [enlarged, setEnlarged] = useState(false);
+  const studioRef = useRef<HTMLDivElement>(null);
   const [rightLiquid, setRightLiquid] = useState<"none" | "beer" | "soda">("none");
-  const [quote, setQuote] = useState<{ cupId: string; qty: number; unitKz: number; freightKz: number; lotKz: number } | null>(null);
   const [market, setMarket] = useState<Market>("KZ");
   const [lang, setLang] = useState<Lang>("pt");
-  const shotsRef = useRef<((turns: number[], side?: "beer" | "soda") => HTMLCanvasElement[]) | null>(null);
+  const captureRef = useRef<((shot: StudioShot) => HTMLCanvasElement[]) | null>(null);
   const t = text(lang);
   const locale = localeFor(lang);
 
@@ -209,7 +197,8 @@ export function BlinkApp() {
 
   useEffect(() => {
     if (!ready) return;
-    localStorage.setItem("blink-draft", JSON.stringify(draft));
+    const timer = window.setTimeout(() => localStorage.setItem("blink-draft", JSON.stringify(draft)), 280);
+    return () => window.clearTimeout(timer);
   }, [draft, ready]);
 
   useEffect(() => {
@@ -241,11 +230,13 @@ export function BlinkApp() {
     if (ready && process !== draft.process) setDraft((current) => ({ ...current, process }));
   }, [ready, process, draft.process]);
 
+  const deferredPhrase = useDeferredValue(draft.phrase);
+  const deferredRightPhrase = useDeferredValue(right.phrase);
   const baseLabels = useMemo(() => {
-    const phrase = draft.phrase.trim();
+    const phrase = deferredPhrase.trim();
     if (!area || (!art && !pattern && !phrase) || typeof document === "undefined") return null;
     const family = fontCss(draft.font);
-    const ppm = Math.min(12, Math.max(8, Math.round(1800 / area.w)));
+    const ppm = Math.min(4.5, Math.max(2.5, 820 / area.w));
     const probe = paintLabel({
       area,
       ppm,
@@ -286,7 +277,7 @@ export function BlinkApp() {
       });
     }
     return map;
-  }, [area, art, pattern, process, draft.phrase, draft.font]);
+  }, [area, art, pattern, process, deferredPhrase, draft.font]);
 
   const labels = useMemo(() => {
     if (!baseLabels) return null;
@@ -300,9 +291,11 @@ export function BlinkApp() {
   }, [baseLabels, tint, process]);
 
   useEffect(() => {
-    if (!baseLabels?.medida) {
-      setVectorLabel(null);
-      setTracing(false);
+    if (draft.sample !== "vetor" || !baseLabels?.medida) {
+      if (draft.sample !== "vetor") {
+        setVectorLabel(null);
+        setTracing(false);
+      }
       return;
     }
     let cancel = false;
@@ -330,7 +323,7 @@ export function BlinkApp() {
       cancel = true;
       window.clearTimeout(timer);
     };
-  }, [baseLabels, process]);
+  }, [baseLabels, process, draft.sample]);
 
   function patch(partial: Partial<Draft>) {
     setDraft((current) => ({ ...current, ...partial }));
@@ -370,12 +363,12 @@ export function BlinkApp() {
   const otherAllowed = processesFor(other);
   const otherProcess = right.process && otherAllowed.includes(right.process) ? right.process : otherAllowed[0];
   const rightBase = useMemo(() => {
-    const phrase = right.phrase.trim();
+    const phrase = deferredRightPhrase.trim();
     const image = rightArt;
     const motif = rightPattern;
     if (!otherArea || (!image && !motif && !phrase) || typeof document === "undefined") return null;
     const family = fontCss(right.font);
-    const ppm = Math.min(12, Math.max(8, Math.round(1800 / otherArea.w)));
+    const ppm = Math.min(4.5, Math.max(2.5, 820 / otherArea.w));
     const probe = paintLabel({
       area: otherArea,
       ppm,
@@ -416,7 +409,7 @@ export function BlinkApp() {
       });
     }
     return map;
-  }, [otherArea, rightArt, rightPattern, right.phrase, right.font, otherProcess]);
+  }, [otherArea, rightArt, rightPattern, deferredRightPhrase, right.font, otherProcess]);
   const rightLabels = useMemo(() => {
     if (!rightBase) return null;
     if (!right.tint) return rightBase;
@@ -430,85 +423,60 @@ export function BlinkApp() {
   const chosenId = draft.sample;
   const chosen = chosenId === "vetor" ? vectorShown : chosenId && labels ? labels[chosenId] : null;
   const shown = chosen ?? labels?.medida ?? null;
-  const rightOwn = Boolean(rightArt || rightPattern || right.phrase.trim());
   const rightId = right.sample ?? "medida";
   const rightShown = rightId !== "vetor" && rightLabels ? rightLabels[rightId] : null;
-  const otherTexture = rightOwn ? rightShown : (rightLabels && right.sample ? rightLabels[right.sample] ?? null : null);
-  const colors = chosen ? dominantColors(chosen, 3) : [];
+  const colors = useMemo(() => (chosen ? dominantColors(chosen, 3) : []), [chosen]);
+  const leftSample = sampleById(draft.sample ?? "medida");
+  const rightSample = sampleById(right.sample ?? "medida");
+  const leftPrint = { w: area?.w ?? cup.top * Math.PI, h: area?.h ?? cup.height * 0.72 };
+  const rightPrint = { w: otherArea?.w ?? other.top * Math.PI, h: otherArea?.h ?? other.height * 0.72 };
+  const leftTiled = useMemo(() => {
+    if (typeof document === "undefined" || cupTint || !pattern) return null;
+    return tilePattern(pattern, leftPrint.w, leftPrint.h);
+  }, [cupTint, pattern, leftPrint.w, leftPrint.h]);
+  const rightTiled = useMemo(() => {
+    if (typeof document === "undefined" || right.cupTint || !rightPattern) return null;
+    return tilePattern(rightPattern, rightPrint.w, rightPrint.h);
+  }, [right.cupTint, rightPattern, rightPrint.w, rightPrint.h]);
+  const heroTexture = useMemo(() => {
+    if (typeof document === "undefined" || cupTint) return null;
+    return composeHeroTexture({
+      pattern,
+      logo: art,
+      phrase: deferredPhrase,
+      font: fontCss(draft.font),
+      ink: tint || "#1A120C",
+      printW: leftPrint.w,
+      printH: leftPrint.h,
+      fit: leftSample.fit,
+      scale: leftSample.scale,
+    }, leftTiled);
+  }, [cupTint, pattern, art, deferredPhrase, draft.font, tint, leftPrint.w, leftPrint.h, leftSample.fit, leftSample.scale, leftTiled]);
+  const rightHero = useMemo(() => {
+    if (typeof document === "undefined" || right.cupTint) return null;
+    return composeHeroTexture({
+      pattern: rightPattern,
+      logo: rightArt,
+      phrase: deferredRightPhrase,
+      font: fontCss(right.font),
+      ink: right.tint || "#1A120C",
+      printW: rightPrint.w,
+      printH: rightPrint.h,
+      fit: rightSample.fit,
+      scale: rightSample.scale,
+    }, rightTiled);
+  }, [right.cupTint, rightPattern, rightArt, deferredRightPhrase, right.font, right.tint, rightPrint.w, rightPrint.h, rightSample.fit, rightSample.scale, rightTiled]);
+  const activeLeft = gridTarget !== "cup2";
+  const stageTexture = activeLeft ? heroTexture : rightHero;
+  const stageCup = activeLeft ? cup : other;
+  const stageBody = activeLeft ? cupTint : right.cupTint;
+  const stageLiquid = activeLeft ? liquid : rightLiquid;
+  const stagePrint = activeLeft ? leftPrint.h : rightPrint.h;
 
-  async function generateMockups(opts: { logo: HTMLCanvasElement | null; bodyColor: string | null; liquid: "none" | "beer" | "soda"; top: number; bot: number; height: number }): Promise<HTMLCanvasElement[]> {
-    const angles = [0, 0.28, 0.5];
-    return angles.map((angle) => {
-      const c = document.createElement("canvas");
-      c.width = 600;
-      c.height = 900;
-      const ctx = c.getContext("2d");
-      if (!ctx) return c;
-      ctx.fillStyle = "#ffffff";
-      ctx.fillRect(0, 0, 600, 900);
-      // Cup proportions from selected size
-      const scale = Math.min(420 / opts.height, 280 / opts.top);
-      const cupH = opts.height * scale;
-      const topR = opts.top * scale * 0.5;
-      const botR = opts.bot * scale * 0.5;
-      const cx = 300;
-      const topY = (900 - cupH) / 2;
-      const botY = topY + cupH;
-      // Body color or transparent
-      const bodyFill = opts.bodyColor || "rgba(255,255,255,0.15)";
-      ctx.save();
-      ctx.beginPath();
-      ctx.moveTo(cx - topR, topY);
-      ctx.lineTo(cx + topR, topY);
-      ctx.lineTo(cx + botR, botY);
-      ctx.lineTo(cx - botR, botY);
-      ctx.closePath();
-      ctx.fillStyle = bodyFill;
-      ctx.fill();
-      ctx.strokeStyle = "rgba(0,0,0,0.08)";
-      ctx.lineWidth = 1;
-      ctx.stroke();
-      ctx.restore();
-      // Liquid if beer/soda
-      if (opts.liquid !== "none") {
-        const liqTop = topY + cupH * (opts.liquid === "beer" ? 0.18 : 0.12);
-        const liqColor = opts.liquid === "beer" ? "rgba(232,168,32,0.75)" : "rgba(20,8,6,0.85)";
-        ctx.save();
-        ctx.beginPath();
-        ctx.moveTo(cx - topR * 0.92, liqTop);
-        ctx.lineTo(cx + topR * 0.92, liqTop);
-        ctx.lineTo(cx + botR * 0.95, botY - 4);
-        ctx.lineTo(cx - botR * 0.95, botY - 4);
-        ctx.closePath();
-        ctx.fillStyle = liqColor;
-        ctx.fill();
-        ctx.restore();
-        if (opts.liquid === "beer") {
-          ctx.fillStyle = "rgba(255,247,238,0.9)";
-          ctx.beginPath();
-          ctx.ellipse(cx, liqTop, topR * 0.85, 8, 0, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      }
-      // Logo
-      if (opts.logo) {
-        const logoW = topR * 1.4;
-        const logoH = logoW * (opts.logo.height / Math.max(1, opts.logo.width));
-        const logoX = cx - logoW / 2 + Math.sin(angle) * topR * 0.15;
-        const logoY = topY + cupH * 0.32;
-        ctx.save();
-        ctx.globalAlpha = 0.95;
-        ctx.drawImage(opts.logo, logoX, logoY, logoW, logoH);
-        ctx.restore();
-      }
-      // Rim highlight
-      ctx.strokeStyle = "rgba(255,255,255,0.6)";
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.ellipse(cx, topY, topR, 6, 0, 0, Math.PI * 2);
-      ctx.stroke();
-      return c;
-    });
+  function openOtherColor(which: "cup1" | "cup2") {
+    setGridTarget(which === "cup1" ? "cup1" : "cup2");
+    setColorDialog(which);
+    studioRef.current?.scrollIntoView({ block: "start", behavior: "auto" });
   }
 
   async function exportCard(side: "beer" | "soda") {
@@ -589,35 +557,33 @@ export function BlinkApp() {
       label: printLabel,
       bodyColor: body,
     });
-    const turns = [0, Math.PI * 0.28, Math.PI];
-    const solid = cupStills(
-      {
-        texture: wrapPrint(texture, motif, motif ? 0.9 : 0.6) ?? texture,
-        top: item.top,
-        bot: item.bot,
-        heightMm: item.height,
-        cover: motif ? 0.9 : itemArea.h / item.height,
-        body,
-        liquid: side === "beer" ? liquid : rightLiquid,
-      },
-      turns,
-    );
-    // Flip third cup upside down (mouth facing down, as if on a table)
-    if (solid.length > 2 && solid[2]) {
-      const flipped = document.createElement("canvas");
-      flipped.width = solid[2].width;
-      flipped.height = solid[2].height;
-      const fctx = flipped.getContext("2d");
-      if (fctx) {
-        fctx.save();
-        fctx.translate(flipped.width / 2, flipped.height / 2);
-        fctx.rotate(Math.PI);
-        fctx.drawImage(solid[2], -solid[2].width / 2, -solid[2].height / 2);
-        fctx.restore();
-        solid[2] = flipped;
-      }
-    }
-    const viewLabels = ["Frente", "Três quartos", "Lado / invertido"];
+    const webTexture = body ? null : side === "beer" ? heroTexture : rightHero;
+    const webShots = captureRef.current?.({
+      top: item.top,
+      bot: item.bot,
+      heightMm: item.height,
+      printMm: itemArea.h,
+      texture: webTexture,
+      body,
+      liquid: side === "beer" ? liquid : rightLiquid,
+      mode: renderMode,
+    });
+    const solid = webShots && webShots.length === 3
+      ? webShots
+      : cupStills(
+          {
+            texture: body ? null : texture,
+            top: item.top,
+            bot: item.bot,
+            heightMm: item.height,
+            cover: itemArea.h / item.height,
+            body,
+            liquid: side === "beer" ? liquid : rightLiquid,
+            quality: "full",
+          },
+          [0.82, 0, -0.82],
+        );
+    const viewLabels = [t.angleLeft, t.angleFront, t.angleRight];
     const views = viewsSheet(item.name, viewLabels, solid);
     return [sheet, tech, views];
   }
@@ -641,7 +607,7 @@ export function BlinkApp() {
   }
 
   return (
-    <main className="mx-auto min-h-dvh w-full max-w-6xl overflow-x-hidden px-4 pb-[max(4rem,env(safe-area-inset-bottom))] pt-[max(1.25rem,env(safe-area-inset-top))] sm:px-6">
+    <main className="mx-auto min-h-dvh w-full max-w-lg overflow-x-hidden px-3 pb-[max(6.5rem,env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] lg:max-w-6xl lg:px-6 lg:pb-16">
       <header className="flex w-full flex-wrap items-end justify-between gap-3">
         <BlinkLogo slogan={t.slogan} />
         <div className="flex items-center gap-1" role="group" aria-label={t.language}>
@@ -660,6 +626,68 @@ export function BlinkApp() {
         <p className="w-full max-w-xl text-sm leading-relaxed text-muted">{t.intro}</p>
       </header>
 
+      <section ref={studioRef} className="mt-4 overflow-hidden rounded-3xl border border-line bg-white">
+        <div className="flex flex-wrap items-center justify-between gap-2 px-3 pt-3">
+          <div className="flex gap-1">
+            <button type="button" className={`min-h-11 rounded-full px-3 text-sm ${gridTarget === "cup1" ? "bg-ink text-paper" : "bg-paper"}`} onClick={() => setGridTarget("cup1")}>{t.cup1}</button>
+            <button type="button" className={`min-h-11 rounded-full px-3 text-sm ${gridTarget === "cup2" ? "bg-urucum text-paper" : "bg-paper"}`} onClick={() => setGridTarget("cup2")}>{t.cup2}</button>
+          </div>
+          <button type="button" className="min-h-11 rounded-full border border-line px-4 text-sm" onClick={() => setEnlarged(true)}>{t.enlarge}</button>
+        </div>
+        <div className="h-[34vh] min-h-[220px] w-full lg:h-[520px]">
+          <CupStudio
+            top={stageCup.top}
+            bot={stageCup.bot}
+            heightMm={stageCup.height}
+            printMm={stagePrint}
+            texture={stageTexture}
+            body={stageBody}
+            liquid={stageLiquid}
+            mode={renderMode}
+            spin={spin && Boolean(stageTexture)}
+            zoom={zoom}
+            captureRef={captureRef}
+            onZoom={(direction) => setZoom((current) => Math.min(2.8, Math.max(1, Math.round((current + direction * 0.08) * 100) / 100)))}
+          />
+        </div>
+        <div className="grid grid-cols-3 px-2 pb-1 text-center text-xs text-muted">
+          <span>{t.angleLeft}</span>
+          <span>{t.angleFront}</span>
+          <span>{t.angleRight}</span>
+        </div>
+        <p className="px-3 text-center text-xs text-muted">{t.studioHint}</p>
+        <label className="flex items-center gap-3 px-3 py-2 text-xs text-muted">
+          {t.zoom}
+          <input
+            className="h-11 min-w-0 flex-1 accent-ink"
+            type="range"
+            min={1}
+            max={2.8}
+            step={0.01}
+            value={zoom}
+            aria-label={t.zoom}
+            onChange={(event) => setZoom(Number(event.target.value))}
+          />
+        </label>
+        <div className="flex flex-wrap items-center gap-2 px-3 pb-3">
+          {(["frost", "clear", "studio"] as const).map((id) => (
+            <button
+              key={id}
+              type="button"
+              aria-pressed={renderMode === id}
+              onClick={() => setRenderMode(id)}
+              className={`min-h-11 rounded-full px-4 text-sm ${renderMode === id ? "bg-ink text-paper" : "bg-paper"}`}
+            >
+              {t.render[id]}
+            </button>
+          ))}
+          <button type="button" className="min-h-11 px-3 text-sm" onClick={() => setSpin((value) => !value)}>
+            {spin ? t.stop : t.spin}
+          </button>
+        </div>
+        <p className="px-3 pb-3 text-xs text-muted">{t.renderNote[renderMode]}</p>
+      </section>
+
       <section className="mt-6">
         <h2 className="font-display text-2xl">{t.plainTitle}</h2>
         <p className="mt-1 text-sm text-muted">{t.plainLead}</p>
@@ -667,34 +695,32 @@ export function BlinkApp() {
           <button type="button" onClick={() => setGridTarget("cup1")} className={`min-h-11 rounded-full px-4 text-sm ${gridTarget === "cup1" ? "bg-ink text-paper" : "bg-card border border-line"}`}>Selecionar Copo 1</button>
           <button type="button" onClick={() => setGridTarget("cup2")} className={`min-h-11 rounded-full px-4 text-sm ${gridTarget === "cup2" ? "bg-urucum text-paper" : "bg-card border border-line"}`}>Selecionar Copo 2</button>
         </div>
-        <ul className="rise-list mt-4 grid grid-cols-2 gap-3 sm:grid-cols-5">
+        <ul className="rise-list mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
           {CUPS.map((item) => {
             const isCup1 = item.id === cup.id;
             const isCup2 = item.id === compareId;
-            const on = gridTarget === "cup1" ? isCup1 : isCup2;
             const window = areaFor(item, processesFor(item).includes(process) ? process : processesFor(item)[0]);
-            const showTexture = isCup1 && chosen ? chosen : isCup2 && rightShown ? rightShown : null;
+            const showTexture = isCup1 ? (chosen ?? labels?.medida ?? null) : isCup2 ? (rightShown ?? rightLabels?.medida ?? null) : null;
             const showBody = isCup1 ? cupTint : isCup2 ? right.cupTint : null;
             return (
               <li key={item.id}>
                 <button
                   type="button"
-                  onClick={() => armClick(`grid-${item.id}`, () => {
+                  onClick={() => {
                     if (gridTarget === "cup1") chooseCup(item.id);
                     else setCompareId(item.id);
-                  }, () => setZoomedCup(item.id))}
+                  }}
                   className={`w-full rounded-3xl border bg-card px-2 pb-3 pt-2 text-left ${isCup1 ? "cup-on border-ink ring-2 ring-ink" : isCup2 ? "border-urucum ring-2 ring-urucum" : "border-line"}`}
-                  title="Duplo clique para ampliar o material"
                 >
                   <CupView
-                    texture={showTexture}
+                    texture={showBody ? null : showTexture}
                     body={showBody}
                     top={item.top}
                     bot={item.bot}
                     heightMm={item.height}
                     cover={window ? window.h / item.height : 0.6}
                     spin={false}
-                    className="pointer-events-none h-36 w-full"
+                    className="pointer-events-none h-28 w-full sm:h-36"
                   />
                   <span className="mt-1 block text-sm font-medium">{item.name}</span>
                   <span className="text-xs text-muted">
@@ -709,7 +735,7 @@ export function BlinkApp() {
         </ul>
       </section>
 
-      <div className="mt-8 grid items-start gap-6 lg:grid-cols-[minmax(0,1.25fr)_minmax(22rem,0.82fr)]">
+      <div className="mt-6 grid items-start gap-6 lg:grid-cols-[minmax(0,1.25fr)_minmax(22rem,0.82fr)]">
         <div className="space-y-6">
         <div className="space-y-4">
           {error ? <p className="border-l-4 border-pitanga pl-3 text-sm">{error}</p> : null}
@@ -717,7 +743,7 @@ export function BlinkApp() {
             <div className="space-y-4">
               <div>
                 <h2 className="font-display text-2xl">{t.samplesTitle}</h2>
-                <ul className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-7">
+                <ul className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
                   {SAMPLES.map((sample) => {
                     const texture = sample.id === "vetor" ? vectorShown : labels[sample.id];
                     const on = draft.sample === sample.id;
@@ -729,14 +755,14 @@ export function BlinkApp() {
                           className={`w-full rounded-3xl border bg-card px-1 pb-3 pt-1 text-left ${on ? "border-ink" : "border-line"}`}
                         >
                           <CupView
-                            texture={texture ?? null}
+                            texture={cupTint ? null : texture ?? null}
                             body={cupTint}
                             top={cup.top}
                             bot={cup.bot}
                             heightMm={cup.height}
-                            cover={area ? (pattern ? 0.9 : area.h / cup.height) : 0.6}
+                            cover={area ? area.h / cup.height : 0.7}
                             spin={false}
-                            className="h-32 w-full"
+                            className="h-28 w-full"
                           />
                           <span className="mt-1 block px-1 text-sm font-medium">{t.sample[sample.id].name}</span>
                           <span className="block px-1 text-xs text-muted">{sample.id === "vetor" && tracing ? t.tracing : t.sample[sample.id].note}</span>
@@ -747,7 +773,7 @@ export function BlinkApp() {
                 </ul>
               </div>
               <div>
-                <ul className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-7">
+                <ul className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
                   {SAMPLES.map((sample) => {
                     const texture = sample.id === "vetor" ? null : rightLabels?.[sample.id] ?? null;
                     const on = (right.sample ?? "medida") === sample.id;
@@ -759,14 +785,14 @@ export function BlinkApp() {
                           className={`w-full rounded-3xl border bg-card px-1 pb-3 pt-1 text-left ${on ? "border-ink" : "border-line"}`}
                         >
                           <CupView
-                            texture={texture}
+                            texture={right.cupTint ? null : texture}
                             body={right.cupTint}
                             top={other.top}
                             bot={other.bot}
                             heightMm={other.height}
-                            cover={otherArea ? (rightPattern ? 0.9 : otherArea.h / other.height) : 0.6}
+                            cover={otherArea ? otherArea.h / other.height : 0.7}
                             spin={false}
-                            className="h-32 w-full"
+                            className="h-28 w-full"
                           />
                           <span className="mt-1 block px-1 text-sm font-medium">{t.sample[sample.id].name}</span>
                           <span className="block px-1 text-xs text-muted">{t.sample[sample.id].note}</span>
@@ -784,39 +810,7 @@ export function BlinkApp() {
           {area ? (
             <section className="overflow-hidden rounded-3xl border border-line bg-card">
             <div>
-              <div className="grid grid-cols-2 items-stretch gap-2 bg-white px-2 pb-3">
-                <div className="relative h-64 overflow-hidden rounded-2xl border border-line bg-white" onDoubleClick={() => setSoloCard("beer")}>
-                  <CupView
-                    key={`cup1-${chosenId}-${cupTint}-${liquid}`}
-                    texture={wrapPrint(shown, pattern, pattern ? 0.9 : 0.6) ?? shown}
-                    top={cup.top}
-                    bot={cup.bot}
-                    heightMm={cup.height}
-                    cover={pattern ? 0.9 : area.h / cup.height}
-                    body={cupTint}
-                    liquid={liquid}
-                    spin={Boolean(art || pattern) && spin}
-                    className="absolute inset-0 h-full w-full"
-                  />
-                  <span className="absolute bottom-2 left-2 rounded bg-white/80 px-2 py-0.5 text-xs text-ink">{t.cup1}</span>
-                </div>
-                <div className="relative h-64 overflow-hidden rounded-2xl border border-line bg-white" onDoubleClick={() => setSoloCard("soda")}>
-                  <CupView
-                    key={`cup2-${right.sample}-${right.cupTint}-${rightLiquid}`}
-                    texture={wrapPrint(otherTexture, rightPattern, rightPattern ? 0.9 : 0.6) ?? otherTexture}
-                    top={other.top}
-                    bot={other.bot}
-                    heightMm={other.height}
-                    cover={rightPattern ? 0.9 : otherArea ? otherArea.h / other.height : 0.6}
-                    body={right.cupTint}
-                    liquid={rightLiquid}
-                    spin={Boolean(rightArt || rightPattern) && spin}
-                    className="absolute inset-0 h-full w-full"
-                  />
-                  <span className="absolute bottom-2 left-2 rounded bg-white/80 px-2 py-0.5 text-xs text-ink">{t.cup2}</span>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 items-start gap-2 bg-white px-2 py-3">
+              <div className="grid grid-cols-1 items-start gap-2 bg-white px-2 py-3 md:grid-cols-2">
                 <div className="min-w-0 rounded-2xl border border-line p-2">
                   <label className="flex flex-col gap-1 text-xs text-muted">
                     {t.cup1}
@@ -833,7 +827,7 @@ export function BlinkApp() {
                   </div>
                   <div className="mt-2 grid grid-cols-2 gap-1">
                     <label className="flex min-h-11 cursor-pointer items-center justify-center rounded-xl border border-dashed border-line px-1 text-center text-xs">{t.logo}<input className="sr-only" type="file" multiple accept="application/pdf,image/png,image/jpeg,image/webp,image/svg+xml" onChange={(event) => { void onFiles(event.target.files, "logo", "beer"); event.target.value = ""; }} /></label>
-                    <label className="flex min-h-11 cursor-pointer items-center justify-center rounded-xl border border-dashed border-line px-1 text-center text-xs">{t.pattern}<input className="sr-only" type="file" multiple accept="application/pdf,image/png,image/jpeg,image/webp,image/svg+xml" onChange={(event) => { void onFiles(event.target.files, "pattern", "beer"); event.target.value = ""; }} /></label>
+                    <label className="flex min-h-11 cursor-pointer items-center justify-center rounded-xl border border-dashed border-line px-1 text-center text-xs">{t.pattern}<input data-testid="pattern-cup1" className="sr-only" type="file" multiple accept="application/pdf,image/png,image/jpeg,image/webp,image/svg+xml" onChange={(event) => { void onFiles(event.target.files, "pattern", "beer"); event.target.value = ""; }} /></label>
                   </div>
                   <div className="mt-1 grid grid-cols-2 gap-1">
                     <button type="button" className={`min-h-11 rounded-xl border px-1 text-xs ${liquid === "beer" ? "border-ink bg-amber-50" : "border-line"}`} onClick={() => setLiquid(liquid === "beer" ? "none" : "beer")}>Cerveja</button>
@@ -860,18 +854,22 @@ export function BlinkApp() {
                     ))}
                   </div>
                   <p className="mt-2 text-xs text-muted">{t.inkLogo}</p>
-                  <div className="mt-1 flex flex-wrap gap-1">
+                  <div className="mt-1 flex flex-wrap gap-2">
                     <button type="button" className={`min-h-11 rounded-full border px-3 text-xs ${tint === null ? "border-ink" : "border-line"}`} onClick={() => setTint(null)}>{t.original}</button>
                     {STOCK.map((swatch) => (
-                      <button key={`l-${swatch.hex}`} type="button" aria-label={swatch.hex} className={`h-9 w-9 rounded-full border ${tint === swatch.hex ? "border-ink ring-2 ring-ink" : "border-line"}`} style={{ background: swatch.hex }} onClick={() => armClick(`logo1-${swatch.hex}`, () => setTint(swatch.hex), () => setPantoneModal({ hex: swatch.hex, type: "logo" }))} />
+                      <button key={`l-${swatch.hex}`} type="button" aria-label={swatch.name} aria-pressed={tint === swatch.hex} className={`h-11 w-11 rounded-full border ${tint === swatch.hex ? "border-ink ring-2 ring-ink" : "border-line"}`} style={{ background: swatch.hex }} onClick={() => setTint(swatch.hex)} />
                     ))}
                   </div>
                   <p className="mt-2 text-xs text-muted">{t.inkCup}</p>
-                  <div className="mt-1 flex flex-wrap gap-1">
+                  <div className="mt-1 flex flex-wrap items-center gap-2">
                     <button type="button" className={`min-h-11 rounded-full border px-3 text-xs ${cupTint === null ? "border-ink" : "border-line"}`} onClick={() => setCupTint(null)}>{t.original}</button>
                     {STOCK.map((swatch) => (
-                      <button key={`c-${swatch.hex}`} type="button" aria-label={swatch.hex} className={`h-9 w-9 rounded-full border ${cupTint === swatch.hex ? "border-ink ring-2 ring-ink" : "border-line"}`} style={{ background: swatch.hex }} onClick={() => armClick(`cup1-${swatch.hex}`, () => setCupTint(swatch.hex), () => setPantoneModal({ hex: swatch.hex, type: "cup" }))} />
+                      <button key={`c-${swatch.hex}`} type="button" aria-label={swatch.name} aria-pressed={cupTint === swatch.hex} className={`h-11 w-11 rounded-full border ${cupTint === swatch.hex ? "border-ink ring-2 ring-ink" : "border-line"}`} style={{ background: swatch.hex }} onClick={() => setCupTint(swatch.hex)} />
                     ))}
+                    <button type="button" data-testid="other-color-cup1" className="flex min-h-11 items-center gap-2 rounded-full border border-dashed border-ink px-2 text-xs" onClick={() => openOtherColor("cup1")}>
+                      <span className="h-7 w-7 rounded-full border border-dashed border-muted bg-white" style={customSwatch(cupTint)} />
+                      {t.otherColor}
+                    </button>
                   </div>
                   <label className="mt-2 block text-xs text-muted">
                     {t.qty}
@@ -929,18 +927,22 @@ export function BlinkApp() {
                     ))}
                   </div>
                   <p className="mt-2 text-xs text-muted">{t.inkLogo}</p>
-                  <div className="mt-1 flex flex-wrap gap-1">
+                  <div className="mt-1 flex flex-wrap gap-2">
                     <button type="button" className={`min-h-11 rounded-full border px-3 text-xs ${right.tint === null ? "border-ink" : "border-line"}`} onClick={() => setRight((current) => ({ ...current, tint: null }))}>{t.original}</button>
                     {STOCK.map((swatch) => (
-                      <button key={`rl-${swatch.hex}`} type="button" aria-label={swatch.hex} className={`h-9 w-9 rounded-full border ${right.tint === swatch.hex ? "border-ink ring-2 ring-ink" : "border-line"}`} style={{ background: swatch.hex }} onClick={() => armClick(`logo2-${swatch.hex}`, () => setRight((current) => ({ ...current, tint: swatch.hex })), () => setPantoneModal({ hex: swatch.hex, type: "logo" }))} />
+                      <button key={`rl-${swatch.hex}`} type="button" aria-label={swatch.name} aria-pressed={right.tint === swatch.hex} className={`h-11 w-11 rounded-full border ${right.tint === swatch.hex ? "border-ink ring-2 ring-ink" : "border-line"}`} style={{ background: swatch.hex }} onClick={() => setRight((current) => ({ ...current, tint: swatch.hex }))} />
                     ))}
                   </div>
                   <p className="mt-2 text-xs text-muted">{t.inkCup}</p>
-                  <div className="mt-1 flex flex-wrap gap-1">
+                  <div className="mt-1 flex flex-wrap items-center gap-2">
                     <button type="button" className={`min-h-11 rounded-full border px-3 text-xs ${right.cupTint === null ? "border-ink" : "border-line"}`} onClick={() => setRight((current) => ({ ...current, cupTint: null }))}>{t.original}</button>
                     {STOCK.map((swatch) => (
-                      <button key={`rc-${swatch.hex}`} type="button" aria-label={swatch.hex} className={`h-9 w-9 rounded-full border ${right.cupTint === swatch.hex ? "border-ink ring-2 ring-ink" : "border-line"}`} style={{ background: swatch.hex }} onClick={() => armClick(`cup2-${swatch.hex}`, () => setRight((current) => ({ ...current, cupTint: swatch.hex })), () => setPantoneModal({ hex: swatch.hex, type: "cup" }))} />
+                      <button key={`rc-${swatch.hex}`} type="button" aria-label={swatch.name} aria-pressed={right.cupTint === swatch.hex} className={`h-11 w-11 rounded-full border ${right.cupTint === swatch.hex ? "border-ink ring-2 ring-ink" : "border-line"}`} style={{ background: swatch.hex }} onClick={() => setRight((current) => ({ ...current, cupTint: swatch.hex }))} />
                     ))}
+                    <button type="button" data-testid="other-color-cup2" className="flex min-h-11 items-center gap-2 rounded-full border border-dashed border-ink px-2 text-xs" onClick={() => openOtherColor("cup2")}>
+                      <span className="h-7 w-7 rounded-full border border-dashed border-muted bg-white" style={customSwatch(right.cupTint)} />
+                      {t.otherColor}
+                    </button>
                   </div>
                   <label className="mt-2 block text-xs text-muted">
                     {t.qty}
@@ -960,31 +962,9 @@ export function BlinkApp() {
                 {cup.name} {cup.height} mm · {t.bottle} 230 mm · {t.can} 115 mm · {other.name} {other.height} mm
                 <span className="mt-0.5 block text-xs text-muted">{t.scaleHint}</span>
               </p>
-              <p className="border-t border-line px-4 py-2 text-xs text-muted">{t.viewHint}</p>
-              <div className="flex flex-wrap items-center gap-2 border-t border-line px-4 py-3">
-                {(["frost", "clear", "studio"] as const).map((id) => (
-                  <button
-                    key={id}
-                    type="button"
-                    aria-pressed={renderMode === id}
-                    onClick={() => setRenderMode(id)}
-                    className={`min-h-11 rounded-full px-4 text-sm ${renderMode === id ? "bg-ink text-paper" : "bg-card"}`}
-                  >
-                    {t.render[id]}
-                  </button>
-                ))}
-              </div>
-              <p className="px-4 pb-3 text-xs text-muted">{t.renderNote[renderMode]}</p>
-              <div className="flex items-center justify-between gap-3 border-t border-line px-4 py-3">
-                <p className="text-sm text-muted">
-                  {cup.name} · {chosenId ? t.sample[chosenId as SampleId].name : ""} · {t.process[process]}
-                </p>
-                {(art || pattern || rightArt || rightPattern) ? (
-                  <button type="button" className="min-h-11 px-3 text-sm" onClick={() => setSpin((value) => !value)}>
-                    {spin ? t.stop : t.spin}
-                  </button>
-                ) : null}
-              </div>
+              <p className="border-t border-line px-4 py-3 text-sm text-muted">
+                {cup.name} · {chosenId ? t.sample[chosenId as SampleId].name : ""} · {t.process[process]}
+              </p>
               {chosen ? <WindowPlate area={area} process={process} canvas={chosen} caption={t} cupColor={cupTint} /> : null}
               {rightShown && otherArea ? <WindowPlate area={otherArea} process={otherProcess} canvas={rightShown} caption={t} cupColor={right.cupTint} /> : null}
             </div>
@@ -1110,104 +1090,54 @@ export function BlinkApp() {
         </div>
       </div>
     
-      {zoomedCup && (() => {
-        const item = CUPS.find(c => c.id === zoomedCup);
-        if (!item) return null;
-        const win = areaFor(item, processesFor(item).includes(process) ? process : processesFor(item)[0]);
-        return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setZoomedCup(null)}>
-            <div className="relative max-h-[90vh] w-full max-w-2xl rounded-3xl bg-white p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-              <button type="button" className="absolute right-4 top-4 text-sm text-muted" onClick={() => setZoomedCup(null)}>Fechar</button>
-              <h3 className="font-display text-xl">{item.name} · {item.height} mm</h3>
-              <p className="mt-1 text-sm text-muted">
-                {item.measured ? `${item.height} × boca ${item.top} × base ${item.bot} mm` : item.height + " mm"}
-                {win ? ` · janela ${win.w} × ${win.h} mm` : ""}
-              </p>
-              <p className="text-xs text-muted">Material em detalhe. Clica fora ou em Fechar para voltar.</p>
-              <div className="mt-4 h-[60vh] rounded-2xl bg-white">
-                <CupView
-                  texture={item.id === cup.id ? shown : item.id === compareId ? otherTexture : null}
-                  body={item.id === cup.id ? cupTint : item.id === compareId ? right.cupTint : null}
-                  top={item.top}
-                  bot={item.bot}
-                  heightMm={item.height}
-                  cover={win ? win.h / item.height : 0.6}
-                  liquid={item.id === cup.id ? liquid : item.id === compareId ? rightLiquid : "none"}
-                  spin={true}
-                  className="h-full w-full"
-                />
-              </div>
-            </div>
+      {enlarged ? (
+        <div className="fixed inset-0 z-50 flex flex-col bg-white">
+          <div className="flex items-center justify-between gap-3 px-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
+            <h3 className="font-display text-xl">{stageCup.name}</h3>
+            <button type="button" className="min-h-11 rounded-full border border-line px-4 text-sm" onClick={() => setEnlarged(false)}>{t.close}</button>
           </div>
-        );
-      })()}
-      {pantoneModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setPantoneModal(null)}>
-          <div className="w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <h3 className="font-display text-lg">Código Pantone</h3>
-            <p className="mt-1 text-sm text-muted">Cor: {pantoneModal.hex}</p>
-            <div className="mt-4 space-y-3">
-              <label className="block text-sm">
-                RGB
-                <input type="text" placeholder="255, 0, 0" className="mt-1 w-full rounded-xl border border-line px-3 py-2" id="pantone-rgb" defaultValue={customColors[pantoneModal.hex]?.rgb || ""} />
-              </label>
-              <label className="block text-sm">
-                CMYK
-                <input type="text" placeholder="0, 100, 100, 0" className="mt-1 w-full rounded-xl border border-line px-3 py-2" id="pantone-cmyk" defaultValue={customColors[pantoneModal.hex]?.cmyk || ""} />
-              </label>
-            </div>
-            <div className="mt-4 flex gap-2">
-              <button type="button" className="min-h-11 flex-1 rounded-xl bg-ink text-paper" onClick={() => {
-                const rgb = (document.getElementById("pantone-rgb") as HTMLInputElement)?.value || "";
-                const cmyk = (document.getElementById("pantone-cmyk") as HTMLInputElement)?.value || "";
-                setCustomColors((prev) => ({ ...prev, [pantoneModal.hex]: { rgb, cmyk } }));
-                setPantoneModal(null);
-              }}>Guardar</button>
-              <button type="button" className="min-h-11 rounded-xl border border-line px-4" onClick={() => {
-                setCustomColors((prev) => { const next = { ...prev }; delete next[pantoneModal.hex]; return next; });
-                setPantoneModal(null);
-              }}>Apagar</button>
-              <button type="button" className="min-h-11 rounded-xl border border-line px-4" onClick={() => setPantoneModal(null)}>Fechar</button>
-            </div>
+          <div className="min-h-0 flex-1">
+            <CupStudio
+              top={stageCup.top}
+              bot={stageCup.bot}
+              heightMm={stageCup.height}
+              printMm={stagePrint}
+              texture={stageTexture}
+              body={stageBody}
+              liquid={stageLiquid}
+              mode={renderMode}
+              spin={false}
+              zoom={zoom}
+              onZoom={(direction) => setZoom((current) => Math.min(2.8, Math.max(1, Math.round((current + direction * 0.08) * 100) / 100)))}
+            />
           </div>
+          <label className="flex items-center gap-3 px-3 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] text-sm">
+            {t.zoom}
+            <input className="h-11 min-w-0 flex-1 accent-ink" type="range" min={1} max={2.8} step={0.01} value={zoom} aria-label={t.zoom} onChange={(event) => setZoom(Number(event.target.value))} />
+          </label>
         </div>
-      )}
-      {soloCard && (() => {
-        const isBeer = soloCard === "beer";
-        const item = isBeer ? cup : other;
-        const itemTexture = isBeer ? shown : otherTexture;
-        const itemTint = isBeer ? cupTint : right.cupTint;
-        const itemLiquid = isBeer ? liquid : rightLiquid;
-        const itemPattern = isBeer ? pattern : rightPattern;
-        return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setSoloCard(null)}>
-            <div className="relative max-h-[90vh] w-full max-w-md overflow-y-auto rounded-3xl bg-white p-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-              <h3 className="font-display text-lg">{item.name} · {item.height} mm</h3>
-              <p className="text-sm text-muted">
-                {item.measured ? `${item.height} × boca ${item.top} × base ${item.bot} mm` : ""}
-              </p>
-              <p className="text-xs text-muted">Toca para pausar, solta para continuar</p>
-              <div className="relative mt-3 h-80 rounded-2xl bg-white">
-                <CupView
-                  texture={wrapPrint(itemTexture, itemPattern, itemPattern ? 0.9 : 0.6) ?? itemTexture}
-                  top={item.top}
-                  bot={item.bot}
-                  heightMm={item.height}
-                  cover={itemPattern ? 0.9 : 0.6}
-                  body={itemTint}
-                  liquid={itemLiquid}
-                  spin={true}
-                  className="absolute inset-0 h-full w-full"
-                />
-              </div>
-              <div className="mt-3 flex gap-2">
-                <button type="button" className="min-h-11 flex-1 rounded-xl bg-ink text-paper" onClick={() => setSoloCard(null)}>Confirmar</button>
-                <button type="button" className="min-h-11 rounded-xl border border-line px-4" onClick={() => setSoloCard(null)}>Fechar</button>
-              </div>
-            </div>
+      ) : null}
+      <OtherColorDialog
+        open={colorDialog !== null}
+        color={colorDialog === "cup2" ? right.cupTint : cupTint}
+        title={t.otherColor}
+        lead={t.otherColorLead}
+        closeLabel={t.close}
+        onColor={(hex) => {
+          if (colorDialog === "cup2") setRight((current) => ({ ...current, cupTint: hex }));
+          else setCupTint(hex);
+        }}
+        onClose={() => setColorDialog(null)}
+      />
+      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-card/95 px-3 py-2 backdrop-blur lg:hidden" style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))" }}>
+        <div className="flex items-center gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-xs text-muted">{t.final}</p>
+            <p className="truncate font-display text-xl leading-none">{orderQty > 0 ? finalLot.primary : "—"}</p>
           </div>
-        );
-      })()}
+          <button type="button" className="min-h-11 shrink-0 rounded-full bg-ink px-4 text-sm text-paper" onClick={() => void saveAttached()}>{t.download}</button>
+        </div>
+      </div>
     </main>
   );
 }
@@ -1223,7 +1153,7 @@ function BlinkLogo({ slogan }: { slogan: string }) {
         <path d="M18 32.2h12l-1.3 5.2h-9.4z" fill="var(--color-pitanga)" className="blink-band" />
       </svg>
       <div>
-        <p className="font-display text-4xl leading-none tracking-tight">BLINK</p>
+        <p className="font-display text-3xl leading-none tracking-tight sm:text-4xl">BLINK</p>
         <p className="mt-1 text-sm text-muted">{slogan}</p>
       </div>
     </div>
@@ -1231,6 +1161,11 @@ function BlinkLogo({ slogan }: { slogan: string }) {
 }
 
 const control = "min-h-11 w-full rounded-2xl border border-line bg-paper px-3";
+
+function customSwatch(hex: string | null): { background: string; borderStyle: "solid" } | undefined {
+  if (!hex || STOCK.some((swatch) => swatch.hex.toLowerCase() === hex.toLowerCase())) return undefined;
+  return { background: hex, borderStyle: "solid" };
+}
 
 function liveQuote(item: ReturnType<typeof cupById>, qty: number) {
   const tiers = item.prices.map((row) => row.qty);
@@ -1259,10 +1194,14 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 
 function WindowPlate({ area, process, canvas, caption, cupColor = null }: { area: Area; process: Process; canvas: HTMLCanvasElement; caption: ReturnType<typeof text>; cupColor?: string | null }) {
   const safety = process === "iml" ? 3 : 2;
-  const [src, setSrc] = useState("");
+  const plateRef = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
-    setSrc(canvas.toDataURL("image/png"));
-  }, [canvas]);
+    const node = plateRef.current;
+    if (!node || cupColor) return;
+    node.width = canvas.width;
+    node.height = canvas.height;
+    node.getContext("2d")?.drawImage(canvas, 0, 0);
+  }, [canvas, cupColor]);
   const pad = 36;
   const inner = 640;
   const innerH = inner * (area.h / area.w);
@@ -1272,18 +1211,31 @@ function WindowPlate({ area, process, canvas, caption, cupColor = null }: { area
   const insetY = (safety / area.h) * innerH;
   return (
     <figure className="border-t border-line px-4 py-4">
-      <svg viewBox={`0 0 ${width} ${height}`} className="w-full" role="img" aria-label={caption.plate}>
-        <rect x={pad} y={pad} width={inner} height={innerH} fill={cupColor || "var(--color-paper)"} />
-        {src ? <image href={src} x={pad} y={pad} width={inner} height={innerH} preserveAspectRatio="xMidYMid meet" /> : null}
-        <rect x={pad} y={pad} width={inner} height={innerH} fill="none" stroke="var(--color-ink)" strokeWidth="1.5" />
-        <rect x={pad + insetX} y={pad + insetY} width={inner - insetX * 2} height={innerH - insetY * 2} fill="none" stroke="var(--color-ipe)" strokeDasharray="7 5" strokeWidth="1.5" />
-        <text x={pad + inner / 2} y={height - 8} textAnchor="middle" fill="var(--color-ink)" fontSize="14" fontFamily="Outfit, sans-serif">
-          {area.w} mm
-        </text>
-        <text x="16" y={pad + innerH / 2} fill="var(--color-ink)" fontSize="14" fontFamily="Outfit, sans-serif" transform={`rotate(-90 16 ${pad + innerH / 2})`} textAnchor="middle">
-          {area.h} mm
-        </text>
-      </svg>
+      <div className="relative">
+        <svg viewBox={`0 0 ${width} ${height}`} className="w-full" role="img" aria-label={caption.plate}>
+          <rect x={pad} y={pad} width={inner} height={innerH} fill={cupColor || "var(--color-paper)"} />
+          <rect x={pad} y={pad} width={inner} height={innerH} fill="none" stroke="var(--color-ink)" strokeWidth="1.5" />
+          <rect x={pad + insetX} y={pad + insetY} width={inner - insetX * 2} height={innerH - insetY * 2} fill="none" stroke="var(--color-ipe)" strokeDasharray="7 5" strokeWidth="1.5" />
+          <text x={pad + inner / 2} y={height - 8} textAnchor="middle" fill="var(--color-ink)" fontSize="14" fontFamily="Outfit, sans-serif">
+            {area.w} mm
+          </text>
+          <text x="16" y={pad + innerH / 2} fill="var(--color-ink)" fontSize="14" fontFamily="Outfit, sans-serif" transform={`rotate(-90 16 ${pad + innerH / 2})`} textAnchor="middle">
+            {area.h} mm
+          </text>
+        </svg>
+        {cupColor ? null : (
+          <canvas
+            ref={plateRef}
+            className="pointer-events-none absolute"
+            style={{
+              left: `${(pad / width) * 100}%`,
+              top: `${(pad / height) * 100}%`,
+              width: `${(inner / width) * 100}%`,
+              height: `${(innerH / height) * 100}%`,
+            }}
+          />
+        )}
+      </div>
       <figcaption className="mt-2 text-xs leading-relaxed text-muted">
         {caption.cut} {safety} {caption.safety}
         {process === "iml" ? ` ${caption.imlNote}` : ""}

@@ -160,7 +160,7 @@ export function paintLabel(options: {
   const canvas = document.createElement("canvas");
   canvas.width = Math.max(8, Math.round(area.w * ppm));
   canvas.height = Math.max(8, Math.round(area.h * ppm));
-  const ctx = canvas.getContext("2d");
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
   if (!ctx) return canvas;
   if (options.process !== "serigrafia") {
     ctx.fillStyle = "#ffffff";
