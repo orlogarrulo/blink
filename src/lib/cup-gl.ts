@@ -318,21 +318,13 @@ void main() {
       float bodyMask = smoothstep(4.6, 5.6, y) * (1.0 - smoothstep(uH - 3.0, uH - 2.2, y));
       float litB = 0.875 + 0.10 * pow(ndv, 0.6) - 0.07 * smoothstep(0.5, 0.95, edge);
       vec3 bodyRgb = uBody.rgb * litB + 0.055 * exp(-pow((xs + 0.46) / 0.12, 2.0));
-      if (wet > 0.0) bodyRgb *= LIQ == 1 ? 0.96 : 0.91;
+      if (wet > 0.0) bodyRgb *= LIQ == 1 ? 0.97 : 0.94;
       wall = over(vec4(bodyRgb, 1.0) * bodyMask, wall);
     }
 
-#ifdef DRINK
-    // Cold drink: fine condensation on the outside, under the print.
-    if (wet > 0.0) {
-      float hl;
-      float dm = dots(aL * vec2(1.0, 1.15), 2.3, 0.55, 0.22, 0.75, fwL, hl);
-      dm *= 1.0 - smoothstep(0.6, 0.95, edge);
-      wall.rgb = mix(wall.rgb, wall.rgb * 0.9, dm * 0.45) + hl * 0.16 * wall.a;
-    }
-#endif
 
     // Print window on the outer surface.
+    float printA = 0.0;
     float slant = sqrt(uH * uH + (uRt - uRb) * (uRt - uRb)) / uH;
     float s = (uH - P1.y) * slant;
     float v = (s - uBand0) / uBandH;
@@ -347,11 +339,13 @@ void main() {
     float win = winU * winV;
     if (win > 0.0) {
       vec4 ink = vec4(0.0);
-      if (uBody.a > 0.0) ink = vec4(uBody.rgb, 1.0);
+      // A drink behind an opaque coloured wall only darkens it a touch, inside and outside the window alike.
+      if (uBody.a > 0.0) ink = vec4(uBody.rgb * (wet > 0.0 ? (LIQ == 1 ? 0.97 : 0.94) : 1.0), 1.0);
       if (uHasTex == 1) {
         vec2 uv = vec2(uFull == 1 ? fract(u) : u, clamp(v, 0.0, 1.0));
         vec2 g = vec2(thetaRaw / uSpan, v);
         vec4 tex = textureGrad(uTex, uv, dFdx(g), dFdy(g));
+        printA = tex.a * win;
         ink = over(tex, ink);
       }
       float lit = 0.875 + 0.10 * pow(ndv, 0.6) - 0.07 * smoothstep(0.5, 0.95, edge);
@@ -359,6 +353,15 @@ void main() {
       ink = vec4(rgb, ink.a) * win;
       wall = over(ink, wall);
     }
+#ifdef DRINK
+    // Cold drink: fine condensation on the outside; the printed art stays crisp on top.
+    if (wet > 0.0) {
+      float hl;
+      float dm = dots(aL * vec2(1.0, 1.15), 2.3, 0.55, 0.22, 0.75, fwL, hl);
+      dm *= (1.0 - smoothstep(0.6, 0.95, edge)) * (1.0 - printA) * wet;
+      wall.rgb = mix(wall.rgb, wall.rgb * 0.9, dm * 0.45) + hl * 0.16 * wall.a * (1.0 - printA) * wet;
+    }
+#endif
     color = mix(color, wall, front);
   }
 
