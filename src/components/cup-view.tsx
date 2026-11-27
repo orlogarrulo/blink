@@ -50,6 +50,9 @@ export function CupView({ texture, top, bot, heightMm, cover, area = null, body 
     let last = 0;
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     dirty.current = true;
+    // The very first frame is drawn at a lighter resolution so the cup shows up at once
+    // (a big ray-traced frame is costly on phones); the next frame is full resolution.
+    let quick = true;
 
     const paint = () => {
       const spec = live.current;
@@ -57,6 +60,13 @@ export function CupView({ texture, top, bot, heightMm, cover, area = null, body 
       const height = canvas.clientHeight;
       if (width < 2 || height < 2) return;
       let ratio = pixelRatio();
+      if (quick) {
+        quick = false;
+        if (ratio > 1.5) {
+          ratio = 1.5;
+          dirty.current = true;
+        }
+      }
       const cap = 4096 / Math.max(width, height);
       ratio = Math.min(ratio, cap);
       const bw = Math.max(2, Math.floor(width * ratio));
