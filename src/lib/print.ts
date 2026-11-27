@@ -195,13 +195,17 @@ export function paintLabel(options: {
     const limitW = canvas.width * (place === "margem" ? 0.7 : 0.88);
     const limitH = Math.max(8, canvas.height - reserve - gap * 2);
     let placed = Math.min(limitW / iw, limitH / ih);
-    if (fit === "cover") placed = Math.max(limitW / iw, limitH / ih);
-    if (fit === "height") placed = limitH / ih;
+    // "Fill" and "height" grow the logo as far as the window allows, but never crop it.
+    const maxW = canvas.width * 0.98;
+    if (fit === "cover") placed = Math.min(maxW / iw, limitH / ih);
+    if (fit === "height") placed = Math.min(limitH / ih, maxW / iw);
     if (fit === "band") placed = Math.min(limitW / iw, (limitH * 0.62) / ih);
-    placed *= options.scale;
+    const basePlaced = Math.min(limitW / iw, limitH / ih);
+    placed = Math.min(placed * options.scale, maxW / iw, (canvas.height - reserve) / ih);
+    labelScales.set(canvas, Math.min(1, placed / Math.max(1e-6, basePlaced)));
     const dw = iw * placed;
     const dh = ih * placed;
-    const y = gap + (limitH - dh) / 2 + options.shift;
+    const y = Math.min(Math.max(0, gap + (limitH - dh) / 2 + options.shift), Math.max(0, canvas.height - reserve - dh));
     ctx.drawImage(source, (canvas.width - dw) / 2, y, dw, dh);
   }
   if (title) {
@@ -227,6 +231,9 @@ export function paintLabel(options: {
   }
   return canvas;
 }
+
+/** How big the logo is in a sample relative to "fit the window" (Com margem is smaller). */
+const labelScales = new WeakMap<HTMLCanvasElement, number>();
 
 /** Same label without the background pattern, for placing the logo over a tiled pattern. */
 const stamps = new WeakMap<HTMLCanvasElement, () => HTMLCanvasElement>();
@@ -267,6 +274,49 @@ function isolateInk(canvas: HTMLCanvasElement) {
     if (x + 1 < w) stack.push(p + 1);
     if (y > 0) stack.push(p - w);
     if (y + 1 < h) stack.push(p + w);
+  }
+  // Small closed paper areas (the inside of letters like o, b, g) are background too.
+  const smallHole = Math.max(16, Math.round(w * h * 0.004));
+  const region: number[] = [];
+  for (let start = 0; start < w * h; start += 1) {
+    if (seen[start] || !paperAt(start * 4)) continue;
+    region.length = 0;
+    stack.push(start);
+    seen[start] = 1;
+    let big = false;
+    while (stack.length > 0) {
+      const p = stack.pop() as number;
+      if (!big) region.push(p);
+      if (region.length > smallHole) big = true;
+      const x = p % w;
+      const y = (p / w) | 0;
+      const next = [x > 0 ? p - 1 : -1, x + 1 < w ? p + 1 : -1, y > 0 ? p - w : -1, y + 1 < h ? p + w : -1];
+      for (const q of next) {
+        if (q < 0 || seen[q] || !paperAt(q * 4)) continue;
+        seen[q] = 1;
+        stack.push(q);
+      }
+    }
+    if (!big) for (const p of region) data[p * 4 + 3] = 0;
+  }
+  // Anti-aliased edges next to removed paper: take the white out of them (colour to alpha),
+  // so a logo on a coloured cup has no pale outline.
+  for (let p = 0; p < w * h; p += 1) {
+    const i = p * 4;
+    if (data[i + 3] < 16) continue;
+    const x = p % w;
+    const y = (p / w) | 0;
+    const nearClear =
+      (x > 0 && data[i - 4 + 3] === 0) || (x + 1 < w && data[i + 4 + 3] === 0) || (y > 0 && data[i - w * 4 + 3] === 0) || (y + 1 < h && data[i + w * 4 + 3] === 0);
+    if (!nearClear) continue;
+    const a = Math.max(255 - data[i], 255 - data[i + 1], 255 - data[i + 2]) / 255;
+    if (a <= 0.02) {
+      data[i + 3] = 0;
+      continue;
+    }
+    if (a >= 0.98) continue;
+    for (let c = 0; c < 3; c += 1) data[i + c] = Math.max(0, Math.min(255, Math.round((data[i + c] - 255 * (1 - a)) / a)));
+    data[i + 3] = Math.round(data[i + 3] * a);
   }
   let ink = 0;
   let lightInk = 0;
@@ -382,6 +432,8 @@ export function dominantColors(source: HTMLCanvasElement, count: number): string
 
 export function tintCanvas(source: HTMLCanvasElement, hex: string, process: Process): HTMLCanvasElement {
   const canvas = tintPixels(source, hex);
+  const scaleOf = labelScales.get(source);
+  if (scaleOf !== undefined) labelScales.set(canvas, scaleOf);
   if (canvas !== source && stamps.has(source)) {
     let cached: HTMLCanvasElement | null = null;
     stamps.set(canvas, () => (cached ??= tintPixels(stampOf(source), hex)));
@@ -686,7 +738,53 @@ export function techSheet(options: {
   return canvas;
 }
 
-export function viewsSheet(title: string, labels: readonly string[], shots: HTMLCanvasElement[]): HTMLCanvasElement {
+/** Bounding box of the cup in a still rendered on white (ignores the faint floor shadow). */
+function cupBox(shot: HTMLCanvasElement) {
+  const step = 2;
+  const w = Math.floor(shot.width / step);
+  const h = Math.floor(shot.height / step);
+  const probe = document.createElement("canvas");
+  probe.width = w;
+  probe.height = h;
+  const pctx = probe.getContext("2d", { willReadFrequently: true });
+  if (!pctx) return { x: 0, y: 0, w: shot.width, h: shot.height };
+  pctx.fillStyle = "#ffffff";
+  pctx.fillRect(0, 0, w, h);
+  pctx.drawImage(shot, 0, 0, w, h);
+  const data = pctx.getImageData(0, 0, w, h).data;
+  let minX = w;
+  let minY = h;
+  let maxX = -1;
+  let maxY = -1;
+  const minRun = Math.max(3, Math.round(w * 0.02));
+  for (let y = 0; y < h; y += 1) {
+    let count = 0;
+    let rowMin = w;
+    let rowMax = -1;
+    for (let x = 0; x < w; x += 1) {
+      const i = (y * w + x) * 4;
+      if (Math.min(data[i], data[i + 1], data[i + 2]) < 236) {
+        count += 1;
+        if (x < rowMin) rowMin = x;
+        if (x > rowMax) rowMax = x;
+      }
+    }
+    if (count < minRun) continue;
+    minY = Math.min(minY, y);
+    maxY = y;
+    minX = Math.min(minX, rowMin);
+    maxX = Math.max(maxX, rowMax);
+  }
+  if (maxX < 0) return { x: 0, y: 0, w: shot.width, h: shot.height };
+  return { x: minX * step, y: minY * step, w: (maxX - minX + 1) * step, h: (maxY - minY + 1) * step };
+}
+
+/**
+ * Page with the cup views side by side. Every cup is cropped to its own outline and drawn
+ * at the same scale on the same top and bottom lines, so an upside-down view stays aligned;
+ * the caption sits centred under each cup.
+ */
+export function viewsSheet(title: string, labels: readonly string[], shots: HTMLCanvasElement[], flips: readonly boolean[] = []): HTMLCanvasElement {
   const canvas = document.createElement("canvas");
   canvas.width = 1240;
   canvas.height = 1754;
@@ -698,24 +796,44 @@ export function viewsSheet(title: string, labels: readonly string[], shots: HTML
   ctx.font = "600 28px Fraunces, serif";
   ctx.fillText(title, 48, 64);
   const frames = shots.slice(0, 3);
-  const gap = 18;
-  const left = 40;
-  const top = 120;
+  const boxes = frames.map(cupBox);
+  const gap = 36;
+  const left = 56;
+  const top = 200;
   const cellW = (canvas.width - left * 2 - gap * Math.max(0, frames.length - 1)) / Math.max(1, frames.length);
-  const photoH = canvas.height - top - 72;
+  const maxW = Math.max(1, ...boxes.map((box) => box.w));
+  const maxH = Math.max(1, ...boxes.map((box) => box.h));
+  // One scale for all, so every cup has the same size.
+  const scale = Math.min((cellW * 0.92) / maxW, 980 / maxH);
+  const cupH = maxH * scale;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
   frames.forEach((shot, index) => {
-    const x = left + index * (cellW + gap);
-    // no background fill - keep white
-    const scale = Math.min(cellW / shot.width, photoH / shot.height);
-    const dw = shot.width * scale;
-    const dh = shot.height * scale;
-    ctx.drawImage(shot, x + (cellW - dw) / 2, top + (photoH - dh) / 2, dw, dh);
+    const box = boxes[index];
+    const cx = left + index * (cellW + gap) + cellW / 2;
+    const dw = box.w * scale;
+    const dh = box.h * scale;
+    const y = top + (cupH - dh) / 2;
+    ctx.save();
+    if (flips[index]) {
+      ctx.translate(cx, y + dh / 2);
+      ctx.rotate(Math.PI);
+      ctx.drawImage(shot, box.x, box.y, box.w, box.h, -dw / 2, -dh / 2, dw, dh);
+    } else {
+      ctx.drawImage(shot, box.x, box.y, box.w, box.h, cx - dw / 2, y, dw, dh);
+    }
+    ctx.restore();
     ctx.fillStyle = "#1A120C";
-    ctx.font = "500 16px Outfit, sans-serif";
-    ctx.textAlign = "center";
-    ctx.fillText(labels[index] || "", x + cellW / 2, top - 12);
-    ctx.textAlign = "left";
+    let size = 34;
+    ctx.font = `600 ${size}px Outfit, sans-serif`;
+    while (size > 20 && ctx.measureText(labels[index] || "").width > cellW - 8) {
+      size -= 2;
+      ctx.font = `600 ${size}px Outfit, sans-serif`;
+    }
+    ctx.fillText(labels[index] || "", cx, top + cupH + 36);
   });
+  ctx.textAlign = "left";
+  ctx.textBaseline = "alphabetic";
   return canvas;
 }
 
@@ -894,9 +1012,77 @@ function edgeMatch(image: HTMLCanvasElement): { x: boolean; y: boolean } {
   return { x: dx / h / 255 < 0.12, y: dy / w / 255 < 0.12 };
 }
 
+/**
+ * Is this "pattern" really a logo (a mark on an empty background) rather than a texture?
+ * A logo is never tiled: it is placed twice round the cup like a logo.
+ */
+const logoLikeCache = new WeakMap<HTMLCanvasElement, boolean>();
+export function isLogoLike(image: HTMLCanvasElement): boolean {
+  const known = logoLikeCache.get(image);
+  if (known !== undefined) return known;
+  const w = Math.min(200, image.width);
+  const h = Math.max(2, Math.round(w * (image.height / Math.max(1, image.width))));
+  const probe = document.createElement("canvas");
+  probe.width = w;
+  probe.height = h;
+  const pctx = probe.getContext("2d", { willReadFrequently: true });
+  let result = false;
+  if (pctx) {
+    pctx.drawImage(image, 0, 0, w, h);
+    const data = pctx.getImageData(0, 0, w, h).data;
+    const empty = (x: number, y: number) => {
+      const i = (y * w + x) * 4;
+      if (data[i + 3] < 24) return true;
+      const light = (data[i] + data[i + 1] + data[i + 2]) / 3;
+      const chroma = Math.max(data[i], data[i + 1], data[i + 2]) - Math.min(data[i], data[i + 1], data[i + 2]);
+      return light > 236 && chroma < 20;
+    };
+    let border = 0;
+    let borderEmpty = 0;
+    let filled = 0;
+    for (let y = 0; y < h; y += 1) {
+      for (let x = 0; x < w; x += 1) {
+        const e = empty(x, y);
+        if (!e) filled += 1;
+        if (x < 2 || y < 2 || x >= w - 2 || y >= h - 2) {
+          border += 1;
+          if (e) borderEmpty += 1;
+        }
+      }
+    }
+    result = borderEmpty / Math.max(1, border) > 0.85 && filled / (w * h) < 0.6;
+  }
+  logoLikeCache.set(image, result);
+  return result;
+}
+
+/** Transparent copy of a logo-like image: white paper around the mark removed. */
+function logoStamp(image: HTMLCanvasElement): HTMLCanvasElement {
+  const canvas = document.createElement("canvas");
+  canvas.width = image.width;
+  canvas.height = image.height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return image;
+  ctx.drawImage(image, 0, 0);
+  isolateInk(canvas);
+  return canvas;
+}
+
+/**
+ * Size of one logo copy (mm). Two copies sit at 0° and 180°, so each gets half the way round;
+ * on a short window the seam gap takes part of one half. A copy is always shrunk to fit, never cropped.
+ */
+function copySize(wMm: number, hMm: number, slotMm: number, bandH: number, share: number) {
+  const fit = Math.min(slotMm * share / Math.max(0.01, wMm), (bandH * 0.82) / Math.max(0.01, hMm));
+  return { w: wMm * fit, h: hMm * fit };
+}
+
 function composeMouldPrint(source: HTMLCanvasElement | null, motif: HTMLCanvasElement | null, options: WrapOptions): HTMLCanvasElement | null {
-  // A pattern always runs all the way round so its two edges meet.
-  const win = printWindow(options.cup, options.area, Boolean(motif));
+  // A logo uploaded as a "pattern" is placed like a logo, not tiled.
+  const motifLogo = motif && isLogoLike(motif) ? logoStamp(motif) : null;
+  const texture = motifLogo ? null : motif;
+  // A texture always runs all the way round so its two edges meet.
+  const win = printWindow(options.cup, options.area, Boolean(texture));
   const ppmMax = options.ppm ?? 12;
   let ppm = Math.min(ppmMax, 4096 / win.widthMm, 4096 / win.bandH);
   let H = Math.max(8, Math.round(win.bandH * ppm));
@@ -908,12 +1094,12 @@ function composeMouldPrint(source: HTMLCanvasElement | null, motif: HTMLCanvasEl
   let tileW = 0;
   let tileH = 0;
   let cols = 0;
-  if (motif) {
-    const aspect = Math.max(1, motif.width) / Math.max(1, motif.height);
+  if (texture) {
+    const aspect = Math.max(1, texture.width) / Math.max(1, texture.height);
     const rows = Math.max(1, Math.round(win.bandH / Math.min(win.bandH, Math.max(30, win.bandH * 0.5))));
     const wantH = win.bandH / rows;
     cols = Math.max(2, Math.round(win.widthMm / (wantH * aspect)));
-    seam = edgeMatch(motif);
+    seam = edgeMatch(texture);
     // A tile whose sides do not match is mirrored every other repeat, so every join is continuous;
     // that needs an even number of repeats around the cup.
     if (!seam.x && cols % 2 === 1) cols += 1;
@@ -932,7 +1118,7 @@ function composeMouldPrint(source: HTMLCanvasElement | null, motif: HTMLCanvasEl
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
 
-  if (motif) {
+  if (texture) {
     // One exact tile, then repeat it with a pattern fill: no overlaps, no gaps.
     const tile = document.createElement("canvas");
     tile.width = tileW;
@@ -941,7 +1127,7 @@ function composeMouldPrint(source: HTMLCanvasElement | null, motif: HTMLCanvasEl
     if (tctx) {
       tctx.imageSmoothingEnabled = true;
       tctx.imageSmoothingQuality = "high";
-      tctx.drawImage(motif, 0, 0, tileW, tileH);
+      tctx.drawImage(texture, 0, 0, tileW, tileH);
       let unit: HTMLCanvasElement = tile;
       if (!seam.x || !seam.y) {
         unit = document.createElement("canvas");
@@ -968,66 +1154,98 @@ function composeMouldPrint(source: HTMLCanvasElement | null, motif: HTMLCanvasEl
     }
   }
 
-  // The logo/phrase keeps the size and height it has in the chosen sample label,
-  // which is drawn for the print area (area.w × area.h mm).
-  if (source && motif) source = stampOf(source);
-  const box = source ? inkBoxOf(source) : null;
-  let logoW = 0;
-  let logoH = 0;
-  let logoY = 0.5;
-  let plate = 0;
-  if (source && box) {
-    const mmPerPx = options.area.w / Math.max(1, source.width);
-    logoW = box.w * mmPerPx;
-    logoH = box.h * mmPerPx;
-    logoY = (box.y + box.h / 2) / Math.max(1, source.height);
-    plate = motif ? Math.max(3, Math.min(logoW, logoH) * 0.12) : 0;
-    // Over a pattern the logo sits on a plate, about a quarter of the way round like the Ecofestes mockup.
-    const onPattern = motif ? 0.45 : 1;
-    // Two copies must fit side by side around the cup and inside the band.
-    const fit = Math.min(onPattern, (win.around * 0.46) / (logoW + plate * 2), (win.bandH * 0.92) / (logoH + plate * 2));
-    logoW *= fit;
-    logoH *= fit;
-    plate *= fit;
-  }
-  const half = (logoW / 2 + plate) / win.rMid;
+  // Copies around the cup: the logo at 0° and 180°; a logo given as the pattern takes
+  // those places when it is alone, or the two sides when there is also a logo.
+  const logoSource = source ? (motif ? stampOf(source) : source) : null;
+  const box = logoSource ? inkBoxOf(logoSource) : null;
+  const mbox = motifLogo ? inkBoxOf(motifLogo) : null;
+  const TAU = Math.PI * 2;
+  const angDist = (p: number, q: number) => Math.abs(((((p - q) % TAU) + TAU + Math.PI) % TAU) - Math.PI);
+  const logoAngles = logoSource && box ? [0, Math.PI] : [];
+  const motifAngles = motifLogo && mbox ? (logoAngles.length ? [Math.PI / 2, (3 * Math.PI) / 2] : [0, Math.PI]) : [];
+  const centres = [...logoAngles, ...motifAngles].sort((p, q) => p - q);
 
-  // Where the canvas starts around the cup (0 = facing the viewer).
-  // Without a pattern a short area leaves a gap; it moves past the back copy so both stay whole.
-  let start = win.full ? -Math.PI : -win.span / 2;
-  if (!win.full && box) {
-    const gap = Math.PI * 2 - win.span;
-    start = half + 0.06 + gap - Math.PI;
+  // A short window (serigrafia) leaves a seam gap. It goes between two copies (on the left
+  // side, never across a copy), so every copy is whole; the canvas starts just after it.
+  const gapAngle = win.full ? 0 : Math.max(0, TAU - win.span);
+  let gapCentre = (3 * Math.PI) / 2;
+  if (gapAngle > 0 && centres.length > 1) {
+    let best = -1;
+    centres.forEach((c, i) => {
+      const next = i + 1 < centres.length ? centres[i + 1] : centres[0] + TAU;
+      const span = next - c;
+      const mid = c + span / 2;
+      // Prefer the widest interval, then the one nearest the left side.
+      const score = span * 10 - angDist(mid, (3 * Math.PI) / 2);
+      if (score > best) {
+        best = score;
+        gapCentre = mid % TAU;
+      }
+    });
   }
+  const start = win.full ? -Math.PI : gapCentre + gapAngle / 2;
   const xAt = (angle: number) => {
-    let d = (angle - start) % (Math.PI * 2);
-    if (d < 0) d += Math.PI * 2;
+    let d = (angle - start) % TAU;
+    if (d < 0) d += TAU;
     return (d / win.span) * W;
   };
+  // Half the free angle on either side of a copy (to the next copy, or to the seam gap).
+  const roomAt = (angle: number) => {
+    if (centres.length < 2) return Math.PI - gapAngle / 2;
+    let room = Math.PI;
+    for (const other of centres) {
+      if (other === angle) continue;
+      for (const dir of [1, -1]) {
+        let delta = ((other - angle) * dir) % TAU;
+        if (delta <= 0) delta += TAU;
+        const mid = angle + (dir * delta) / 2;
+        const gapInside = gapAngle > 0 && angDist(mid, gapCentre) < 1e-6;
+        room = Math.min(room, (delta - (gapInside ? gapAngle : 0)) / 2);
+      }
+    }
+    return room;
+  };
 
-  if (source && box) {
-    const dw = logoW * ppm;
-    const dh = logoH * ppm;
-    const pad = plate * ppm;
-    const cy = Math.min(H - dh / 2 - pad, Math.max(dh / 2 + pad, logoY * H));
-    const stamp = (cx: number) => {
-      if (motif) {
+  type Stamp = { image: HTMLCanvasElement; box: { x: number; y: number; w: number; h: number }; wMm: number; hMm: number; plate: number };
+  const place = (stamp: Stamp, angles: number[]) => {
+    const dw = stamp.wMm * ppm;
+    const dh = stamp.hMm * ppm;
+    const pad = stamp.plate * ppm;
+    const cy = H / 2;
+    const draw = (cx: number) => {
+      if (pad > 0) {
         ctx.save();
         ctx.fillStyle = "#ffffff";
         roundRect(ctx, cx - dw / 2 - pad, cy - dh / 2 - pad, dw + pad * 2, dh + pad * 2, pad * 1.4);
         ctx.fill();
         ctx.restore();
       }
-      ctx.drawImage(source, box.x, box.y, box.w, box.h, cx - dw / 2, cy - dh / 2, dw, dh);
+      ctx.drawImage(stamp.image, stamp.box.x, stamp.box.y, stamp.box.w, stamp.box.h, cx - dw / 2, cy - dh / 2, dw, dh);
     };
-    for (const angle of [0, Math.PI]) {
+    for (const angle of angles) {
       const cx = xAt(angle);
-      stamp(cx);
+      draw(cx);
+      // On a full wrap a copy that crosses the canvas edge continues on the other side.
       if (win.full) {
-        if (cx - dw / 2 - pad < 0) stamp(cx + W);
-        if (cx + dw / 2 + pad > W) stamp(cx - W);
+        if (cx - dw / 2 - pad < 0) draw(cx + W);
+        if (cx + dw / 2 + pad > W) draw(cx - W);
       }
     }
+  };
+  const slotFor = (angles: number[]) => Math.max(4, Math.min(...angles.map(roomAt)) * 2 * win.rMid - 3);
+
+  // The logo/phrase: two copies, front and back, together almost all the way round
+  // (each up to 45% of the circumference, limited by the print height).
+  if (logoSource && box) {
+    const rel = Math.max(0.4, labelScales.get(source as HTMLCanvasElement) ?? 1);
+    const share = (texture ? 0.4 : win.full ? 0.9 : 0.96) * rel;
+    const plateK = texture ? 0.12 : 0;
+    const size = copySize(box.w, box.h, slotFor(logoAngles) / (1 + plateK * 2), win.bandH / (1 + plateK * 2), share);
+    place({ image: logoSource, box, wMm: size.w, hMm: size.h, plate: texture ? Math.max(2, Math.min(size.w, size.h) * plateK) : 0 }, logoAngles);
+  }
+  if (motifLogo && mbox) {
+    const size = copySize(mbox.w, mbox.h, slotFor(motifAngles), win.bandH, win.full ? 0.9 : 0.96);
+    place({ image: motifLogo, box: mbox, wMm: size.w, hMm: size.h, plate: 0 }, motifAngles);
   }
 
   setPrintMeta(canvas, { band0: win.band0, bandH: win.bandH, span: win.span, start, full: win.full, widthMm: win.widthMm });

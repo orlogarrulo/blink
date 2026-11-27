@@ -167,6 +167,14 @@ void main() {
     if (uLiquid > 0 && P1.y < uLevel) frostA *= 0.62;
     vec4 wall = over(vec4(frostC * frostA, frostA), back);
 
+    // A coloured cup: the colour covers the whole wall, from just under the lip to the foot.
+    if (uBody.a > 0.0) {
+      float bodyMask = smoothstep(4.6, 5.6, y) * (1.0 - smoothstep(uH - 3.0, uH - 2.2, y));
+      float litB = 0.875 + 0.10 * pow(ndv, 0.6) - 0.07 * smoothstep(0.5, 0.95, edge);
+      vec3 bodyRgb = uBody.rgb * litB + 0.055 * exp(-pow((xs + 0.46) / 0.12, 2.0));
+      wall = over(vec4(bodyRgb, 1.0) * bodyMask, wall);
+    }
+
     // Print window on the outer surface.
     float slant = sqrt(uH * uH + (uRt - uRb) * (uRt - uRb)) / uH;
     float s = (uH - P1.y) * slant;

@@ -16,9 +16,11 @@ import {
   productionDays,
   STOCK,
   type Area,
+  type Cup,
   type Process,
 } from "@/lib/catalog";
 import { LANGS, detectLang, localeFor, text, type Lang } from "@/lib/copy";
+import { printMetaOf } from "@/lib/print-meta";
 import { canvasPdf, cmyk, composeLogos, composePattern, dominantColors, downloadBlob, openPdf, paintLabel, sheetCanvas, techSheet, tintCanvas, viewsSheet, wrapPrint } from "@/lib/print";
 import { BOX_CUPS, airFreight, chargedQty, SHEET_KZ_PER_EUR, cupWeightScale } from "@/lib/freight";
 import { dialForMarket, detectMarket, KZ_PER_EUR, pricePair, type Market } from "@/lib/money";
@@ -573,6 +575,12 @@ export function BlinkApp() {
       place: sample.id === "vetor" ? "medida" : sample.id,
     });
     if (ink) printLabel = tintCanvas(printLabel, ink, itemProcess);
+    // The flat label in the PDF is the print exactly as it sits on the cup (same copies, same sizes).
+    const unrolled = wrapPrint(printLabel, motif, 0.9, { cup: item, area: itemArea }) ?? printLabel;
+    const unrolledMeta = printMetaOf(unrolled);
+    const sheetArea = unrolledMeta
+      ? { ...itemArea, w: Math.round(unrolledMeta.widthMm * 10) / 10, h: Math.round(unrolledMeta.bandH * 10) / 10 }
+      : itemArea;
     const sheetColors = (ink ? [ink] : palette.length > 0 ? palette : ["#1A120C"]).slice(0, 3).map((hex) => ({ hex }));
     const when = new Intl.DateTimeFormat(locale, { dateStyle: "long" }).format(deliveryDate(numbers.charge, itemProcess));
     const sheet = sheetCanvas({
@@ -582,10 +590,10 @@ export function BlinkApp() {
       phone: draft.phone ? `${draft.dial} ${draft.phone}` : "",
       cup: item,
       process: itemProcess,
-      area: itemArea,
+      area: sheetArea,
       qty: numbers.charge,
       colors: sheetColors,
-      label: printLabel,
+      label: unrolled,
       bodyColor: body,
       delivery: when,
       eventDate: draft.eventDate,
@@ -594,15 +602,15 @@ export function BlinkApp() {
     });
     const tech = techSheet({
       cup: item,
-      area: itemArea,
+      area: sheetArea,
       process: itemArea.full ? "Quadricromia IML · cobertura total 360°" : itemProcess === "iml" ? "Quadricromia IML" : itemProcess === "serigrafia" ? "Serigrafia" : "Digital",
-      label: printLabel,
+      label: unrolled,
       bodyColor: body,
     });
     const turns = [0, Math.PI * 0.28, Math.PI];
     const solid = cupStills(
       {
-        texture: wrapPrint(texture, motif, motif ? 0.9 : 0.6, { cup: item, area: itemArea }) ?? texture,
+        texture: unrolled,
         area: itemArea,
         top: item.top,
         bot: item.bot,
@@ -613,23 +621,9 @@ export function BlinkApp() {
       },
       turns,
     );
-    // Flip third cup upside down (mouth facing down, as if on a table)
-    if (solid.length > 2 && solid[2]) {
-      const flipped = document.createElement("canvas");
-      flipped.width = solid[2].width;
-      flipped.height = solid[2].height;
-      const fctx = flipped.getContext("2d");
-      if (fctx) {
-        fctx.save();
-        fctx.translate(flipped.width / 2, flipped.height / 2);
-        fctx.rotate(Math.PI);
-        fctx.drawImage(solid[2], -solid[2].width / 2, -solid[2].height / 2);
-        fctx.restore();
-        solid[2] = flipped;
-      }
-    }
     const viewLabels = ["Frente", "Três quartos", "Lado / invertido"];
-    const views = viewsSheet(item.name, viewLabels, solid);
+    // The third view is upside down (mouth facing down, as if on a table); viewsSheet keeps it aligned.
+    const views = viewsSheet(item.name, viewLabels, solid, [false, false, true]);
     return [sheet, tech, views];
   }
 
@@ -1017,8 +1011,8 @@ export function BlinkApp() {
                   </button>
                 ) : null}
               </div>
-              {chosen ? <WindowPlate area={area} process={process} canvas={chosen} caption={t} cupColor={cupTint} /> : null}
-              {rightShown && otherArea ? <WindowPlate area={otherArea} process={otherProcess} canvas={rightShown} caption={t} cupColor={right.cupTint} /> : null}
+              {chosen ? <WindowPlate {...unrolledPlate(chosen, pattern, cup, area)} process={process} caption={t} cupColor={cupTint} /> : null}
+              {rightShown && otherArea ? <WindowPlate {...unrolledPlate(rightShown, rightPattern, other, otherArea)} process={otherProcess} caption={t} cupColor={right.cupTint} /> : null}
             </div>
             </section>
           ) : null}
@@ -1265,7 +1259,7 @@ export function BlinkApp() {
                       label={`${item.name}, ${name}`}
                       className="pointer-events-none h-44 w-full"
                     />
-                    <figcaption className="text-center text-[11px] text-muted">{name}</figcaption>
+                    <figcaption className="whitespace-nowrap pb-1 text-center text-[15px] font-semibold text-ink">{name}</figcaption>
                   </figure>
                 ))}
               </div>
@@ -1324,6 +1318,14 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
       <span className="mt-1 block">{children}</span>
     </label>
   );
+}
+
+/** The print window as it is printed (same copies and sizes as on the 3D cup), with its real size in mm. */
+function unrolledPlate(label: HTMLCanvasElement, motif: HTMLCanvasElement | null, cup: Cup, area: Area): { canvas: HTMLCanvasElement; area: Area } {
+  const canvas = wrapPrint(label, motif, 0.9, { cup, area, ppm: 6 });
+  const meta = printMetaOf(canvas);
+  if (!canvas || !meta) return { canvas: label, area };
+  return { canvas, area: { ...area, w: Math.round(meta.widthMm * 10) / 10, h: Math.round(meta.bandH * 10) / 10 } };
 }
 
 function WindowPlate({ area, process, canvas, caption, cupColor = null }: { area: Area; process: Process; canvas: HTMLCanvasElement; caption: ReturnType<typeof text>; cupColor?: string | null }) {
