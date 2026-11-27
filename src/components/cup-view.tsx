@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { renderCupGL } from "@/lib/cup-gl";
 
 type Props = {
   texture: HTMLCanvasElement | null;
@@ -6,19 +7,39 @@ type Props = {
   bot: number;
   heightMm: number;
   cover: number;
+  /** Print area in mm (from the catalogue); places the print window like the mould. */
+  area?: { w: number; h: number } | null;
   body?: string | null;
   liquid?: "none" | "beer" | "soda";
   spin: boolean;
+  /** Fixed view angle in radians when not spinning (0 = front). */
+  turn?: number;
   className?: string;
+  label?: string;
 };
 
-export function CupView({ texture, top, bot, heightMm, cover, body = null, liquid = "none", spin, className }: Props) {
+/** Device pixel ratio for crisp output, including pinch zoom, capped for speed. */
+function pixelRatio() {
+  if (typeof window === "undefined") return 1;
+  const dpr = Math.min(3, window.devicePixelRatio || 1);
+  const pinch = Math.min(3, Math.max(1, window.visualViewport?.scale ?? 1));
+  return dpr * pinch;
+}
+
+export function CupView({ texture, top, bot, heightMm, cover, area = null, body = null, liquid = "none", spin, turn = 0, className, label }: Props) {
   const ref = useRef<HTMLCanvasElement>(null);
-  const angle = useRef(0);
+  const angle = useRef(turn);
   const drag = useRef<{ x: number; a: number } | null>(null);
   const paused = useRef(false);
-  const live = useRef({ texture, top, bot, heightMm, cover, body, liquid, spin });
-  live.current = { texture, top, bot, heightMm, cover, body, liquid, spin };
+  const visible = useRef(true);
+  const dirty = useRef(true);
+  const live = useRef({ texture, top, bot, heightMm, cover, area, body, liquid, spin });
+  live.current = { texture, top, bot, heightMm, cover, area, body, liquid, spin };
+
+  useEffect(() => {
+    if (!spin) angle.current = turn;
+    dirty.current = true;
+  }, [turn, spin]);
 
   useEffect(() => {
     const canvas = ref.current;
@@ -26,50 +47,82 @@ export function CupView({ texture, top, bot, heightMm, cover, body = null, liqui
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     let frame = 0;
+    let last = 0;
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    dirty.current = true;
 
     const paint = () => {
       const spec = live.current;
       const width = canvas.clientWidth;
       const height = canvas.clientHeight;
       if (width < 2 || height < 2) return;
-      const ratio = Math.min(2, window.devicePixelRatio || 1);
-      const bw = Math.floor(width * ratio);
-      const bh = Math.floor(height * ratio);
+      let ratio = pixelRatio();
+      const cap = 4096 / Math.max(width, height);
+      ratio = Math.min(ratio, cap);
+      const bw = Math.max(2, Math.floor(width * ratio));
+      const bh = Math.max(2, Math.floor(height * ratio));
       if (canvas.width !== bw || canvas.height !== bh) {
         canvas.width = bw;
         canvas.height = bh;
       }
-      ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
-      ctx.clearRect(0, 0, width, height);
-
-      drawCup(ctx, width, height, spec, angle.current);
-
-      if (spec.spin && !reduce && !drag.current && !paused.current) angle.current += 0.007;
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, bw, bh);
+      const ok = renderCupGL(ctx, bw, bh, spec, angle.current);
+      if (!ok) {
+        ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+        drawCup2d(ctx, width, height, spec, angle.current);
+      }
     };
 
-    const draw = () => paint();
-    if (!spin) {
-      draw();
-      const observer = new ResizeObserver(() => draw());
-      observer.observe(canvas);
-      return () => observer.disconnect();
-    }
-    const loop = () => {
-      draw();
+    const loop = (now: number) => {
       frame = requestAnimationFrame(loop);
+      if (!visible.current || document.hidden) return;
+      const moving = live.current.spin && !reduce && !drag.current && !paused.current;
+      if (moving) {
+        const dt = last ? Math.min(64, now - last) : 16;
+        angle.current += 0.00042 * dt;
+        dirty.current = true;
+      }
+      last = now;
+      if (dirty.current) {
+        dirty.current = false;
+        paint();
+      }
     };
     frame = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(frame);
-  }, [texture, top, bot, heightMm, cover, spin]);
+
+    const mark = () => {
+      dirty.current = true;
+    };
+    const resize = new ResizeObserver(mark);
+    resize.observe(canvas);
+    const seen = new IntersectionObserver((entries) => {
+      for (const entry of entries) visible.current = entry.isIntersecting;
+      if (visible.current) dirty.current = true;
+    });
+    seen.observe(canvas);
+    window.visualViewport?.addEventListener("resize", mark);
+    window.addEventListener("resize", mark);
+    return () => {
+      cancelAnimationFrame(frame);
+      resize.disconnect();
+      seen.disconnect();
+      window.visualViewport?.removeEventListener("resize", mark);
+      window.removeEventListener("resize", mark);
+    };
+  }, [texture, top, bot, heightMm, cover, area?.w, area?.h, body, liquid, spin]);
 
   return (
     <canvas
       ref={ref}
       className={className ?? "h-80 w-full touch-none lg:h-[32rem]"}
-      aria-label="Copo Ecocup. Arrasta para rodar."
-      onMouseEnter={() => { paused.current = true; }}
-      onMouseLeave={() => { paused.current = false; }}
+      aria-label={label ?? "Copo Ecocup. Arrasta para rodar."}
+      onMouseEnter={() => {
+        paused.current = true;
+      }}
+      onMouseLeave={() => {
+        paused.current = false;
+      }}
       onPointerDown={(event) => {
         if (!spin) return;
         drag.current = { x: event.clientX, a: angle.current };
@@ -78,17 +131,21 @@ export function CupView({ texture, top, bot, heightMm, cover, body = null, liqui
       onPointerMove={(event) => {
         if (!drag.current) return;
         angle.current = drag.current.a + (event.clientX - drag.current.x) * 0.012;
+        dirty.current = true;
       }}
       onPointerUp={() => {
+        drag.current = null;
+      }}
+      onPointerCancel={() => {
         drag.current = null;
       }}
     />
   );
 }
 
-
 type CupDraw = {
   texture: HTMLCanvasElement | null;
+  area?: { w: number; h: number } | null;
   top: number;
   bot: number;
   heightMm: number;
@@ -97,7 +154,7 @@ type CupDraw = {
   liquid?: "none" | "beer" | "soda";
 };
 
-function drawCup(
+function drawCup2d(
   ctx: CanvasRenderingContext2D,
   width: number,
   height: number,
@@ -298,11 +355,12 @@ function mixWhite(hex: string) {
 }
 
 
+
 export function cupStills(
   spec: CupDraw,
   turns: number[],
-  width = 900,
-  height = 1200,
+  width = 1200,
+  height = 1600,
 ): HTMLCanvasElement[] {
   return turns.map((turn) => {
     const canvas = document.createElement("canvas");
@@ -312,7 +370,15 @@ export function cupStills(
     if (!ctx) return canvas;
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, width, height);
-    drawCup(ctx, width, height, spec, turn);
+    const layer = document.createElement("canvas");
+    layer.width = width;
+    layer.height = height;
+    const lctx = layer.getContext("2d");
+    if (lctx && renderCupGL(lctx, width, height, spec, turn)) {
+      ctx.drawImage(layer, 0, 0);
+    } else {
+      drawCup2d(ctx, width, height, spec, turn);
+    }
     return canvas;
   });
 }

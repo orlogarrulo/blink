@@ -1,4 +1,5 @@
 import type { Area, Cup, Process } from "@/lib/catalog";
+import { printWindow, setPrintMeta, type CupShape } from "@/lib/print-meta";
 import { PROCESS_LABEL, freightMode, priceFor, productionDays, freightDays } from "@/lib/catalog";
 
 export function hexToRgb(hex: string): [number, number, number] {
@@ -83,6 +84,20 @@ function drawCover(
 }
 
 export function composePattern(images: CanvasImageSource[]): HTMLCanvasElement {
+  if (images.length === 1) {
+    // One file: keep it at its own size and proportions so the tile stays sharp.
+    const [iw, ih] = sourceSize(images[0]);
+    const scale = Math.min(1, 4096 / Math.max(iw, ih));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(2, Math.round(iw * scale));
+    canvas.height = Math.max(2, Math.round(ih * scale));
+    const ctx = canvas.getContext("2d");
+    if (ctx) {
+      ctx.imageSmoothingQuality = "high";
+      ctx.drawImage(images[0], 0, 0, canvas.width, canvas.height);
+    }
+    return canvas;
+  }
   const canvas = document.createElement("canvas");
   canvas.width = 1600;
   canvas.height = 2000;
@@ -206,7 +221,18 @@ export function paintLabel(options: {
     quantize(canvas, inks);
   }
   isolateInk(canvas);
+  if (options.pattern) {
+    let cached: HTMLCanvasElement | null = null;
+    stamps.set(canvas, () => (cached ??= paintLabel({ ...options, pattern: null })));
+  }
   return canvas;
+}
+
+/** Same label without the background pattern, for placing the logo over a tiled pattern. */
+const stamps = new WeakMap<HTMLCanvasElement, () => HTMLCanvasElement>();
+
+export function stampOf(label: HTMLCanvasElement): HTMLCanvasElement {
+  return stamps.get(label)?.() ?? label;
 }
 
 function isolateInk(canvas: HTMLCanvasElement) {
@@ -355,6 +381,16 @@ export function dominantColors(source: HTMLCanvasElement, count: number): string
 }
 
 export function tintCanvas(source: HTMLCanvasElement, hex: string, process: Process): HTMLCanvasElement {
+  const canvas = tintPixels(source, hex);
+  if (canvas !== source && stamps.has(source)) {
+    let cached: HTMLCanvasElement | null = null;
+    stamps.set(canvas, () => (cached ??= tintPixels(stampOf(source), hex)));
+  }
+  void process;
+  return canvas;
+}
+
+function tintPixels(source: HTMLCanvasElement, hex: string): HTMLCanvasElement {
   const canvas = document.createElement("canvas");
   canvas.width = source.width;
   canvas.height = source.height;
@@ -775,8 +811,162 @@ export function downloadBlob(blob: Blob, name: string) {
   URL.revokeObjectURL(url);
 }
 
-export function wrapPrint(source: HTMLCanvasElement | null, motif: HTMLCanvasElement | null, spanCover = 0.6): HTMLCanvasElement | null {
+type WrapOptions = { cup: CupShape; area: Area };
+
+const wrapCache = new WeakMap<object, Map<string, HTMLCanvasElement | null>>();
+const NO_SOURCE = {};
+
+function inkBoxOf(image: HTMLCanvasElement) {
+  const read = image.getContext("2d", { willReadFrequently: true });
+  if (!read || image.width < 2 || image.height < 2) return null;
+  const data = read.getImageData(0, 0, image.width, image.height).data;
+  let minX = image.width;
+  let minY = image.height;
+  let maxX = -1;
+  let maxY = -1;
+  for (let y0 = 0; y0 < image.height; y0 += 2) {
+    for (let x0 = 0; x0 < image.width; x0 += 2) {
+      if (data[(y0 * image.width + x0) * 4 + 3] <= 24) continue;
+      if (x0 < minX) minX = x0;
+      if (y0 < minY) minY = y0;
+      if (x0 > maxX) maxX = x0;
+      if (y0 > maxY) maxY = y0;
+    }
+  }
+  if (maxX < 0) return null;
+  return { x: minX, y: minY, w: Math.min(image.width - minX, maxX - minX + 2), h: Math.min(image.height - minY, maxY - minY + 2) };
+}
+
+/**
+ * Compose the print exactly as it sits in the mould window: the canvas is the
+ * print area in millimetres (12 px/mm), the pattern tiles across it and the
+ * logo is placed twice, once facing the viewer and once on the back.
+ * The canvas carries its mould geometry (printMetaOf) for the 3D view.
+ * Without `options` the old full-circumference layout is kept.
+ */
+export function wrapPrint(source: HTMLCanvasElement | null, motif: HTMLCanvasElement | null, spanCover = 0.6, options?: WrapOptions): HTMLCanvasElement | null {
   if (!source && !motif) return null;
+  const key = options
+    ? `${options.cup.top}/${options.cup.bot}/${options.cup.height}/${options.area.w}/${options.area.h}`
+    : `legacy/${spanCover}`;
+  const outer = (source ?? NO_SOURCE) as object;
+  let byMotif = wrapCache.get(outer);
+  if (!byMotif) {
+    byMotif = new Map();
+    wrapCache.set(outer, byMotif);
+  }
+  const motifKey = motif ? motifIds.get(motif) ?? motifIds.set(motif, `m${motifIds.size + 1}${Math.random().toString(36).slice(2, 6)}`).get(motif)! : "none";
+  const cacheKey = `${motifKey}|${key}`;
+  if (byMotif.has(cacheKey)) return byMotif.get(cacheKey) ?? null;
+  const out = options ? composeMouldPrint(source, motif, options) : legacyWrap(source, motif, spanCover);
+  byMotif.set(cacheKey, out);
+  if (byMotif.size > 12) {
+    const first = byMotif.keys().next().value;
+    if (first !== undefined) byMotif.delete(first);
+  }
+  return out;
+}
+
+const motifIds = new Map<HTMLCanvasElement, string>();
+
+function composeMouldPrint(source: HTMLCanvasElement | null, motif: HTMLCanvasElement | null, options: WrapOptions): HTMLCanvasElement | null {
+  const win = printWindow(options.cup, options.area);
+  const ppm = Math.min(12, 4096 / win.widthMm, 4096 / win.bandH);
+  const W = Math.max(8, Math.round(win.widthMm * ppm));
+  const H = Math.max(8, Math.round(win.bandH * ppm));
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+
+  // The sample labels already carry the pattern; over a tiled pattern only the logo/phrase is stamped.
+  if (source && motif) source = stampOf(source);
+  const box = source ? inkBoxOf(source) : null;
+  // Logo size in mm, like the ECO50 mould: a plate about a quarter of the print wide.
+  let logoW = 0;
+  let logoH = 0;
+  let plate = 0;
+  if (box) {
+    const front = Math.min(win.widthMm, win.around * 0.5);
+    const maxW = motif ? front * 0.5 : front * 0.72;
+    const maxH = motif ? win.bandH * 0.36 : win.bandH * 0.78;
+    const scale = Math.min(maxW / box.w, maxH / box.h);
+    logoW = box.w * scale;
+    logoH = box.h * scale;
+    plate = motif ? Math.max(3, Math.min(logoW, logoH) * 0.12) : 0;
+  }
+  const half = (logoW / 2 + plate) / win.rMid;
+
+  // Where the canvas starts around the cup. Front-centred; with a seam gap and a
+  // logo, the gap moves just past the back logo so both copies stay whole.
+  let start = -win.span / 2;
+  if (!win.full && box) {
+    const gap = Math.PI * 2 - win.span;
+    const margin = 0.06;
+    start = half + margin + gap - Math.PI;
+  }
+  const xAt = (angle: number) => {
+    let d = (angle - start) % (Math.PI * 2);
+    if (d < 0) d += Math.PI * 2;
+    return (d / win.span) * W;
+  };
+
+  if (motif) {
+    const iw = Math.max(1, motif.width);
+    const ih = Math.max(1, motif.height);
+    const artAspect = W / H;
+    const aspect = iw / ih;
+    if (Math.abs(Math.log(aspect / artAspect)) < 0.28 && ih >= 400) {
+      // The file is the whole print: fill the window with it.
+      drawCover(ctx, motif, 0, 0, W, H);
+    } else {
+      let th = H / 2;
+      let tw = th * aspect;
+      const cols = Math.max(1, Math.round(W / tw));
+      tw = W / cols;
+      th = tw / aspect;
+      for (let ty = 0; ty < H; ty += th) {
+        for (let tx = 0; tx < W - 0.5; tx += tw) {
+          ctx.drawImage(motif, tx - 0.25, ty - 0.25, tw + 0.5, th + 0.5);
+        }
+      }
+    }
+  }
+
+  if (source && box) {
+    const dw = logoW * ppm;
+    const dh = logoH * ppm;
+    const cy = H * (motif ? 0.5 : 0.48);
+    const pad = plate * ppm;
+    const stamp = (cx: number) => {
+      if (motif) {
+        ctx.save();
+        ctx.fillStyle = "#ffffff";
+        roundRect(ctx, cx - dw / 2 - pad, cy - dh / 2 - pad, dw + pad * 2, dh + pad * 2, pad * 1.4);
+        ctx.fill();
+        ctx.restore();
+      }
+      ctx.drawImage(source, box.x, box.y, box.w, box.h, cx - dw / 2, cy - dh / 2, dw, dh);
+    };
+    for (const angle of [0, Math.PI]) {
+      const cx = xAt(angle);
+      stamp(cx);
+      // Full wraps join at the back: draw the copy that crosses the seam on both ends.
+      if (win.full) {
+        if (cx - dw / 2 - pad < 0) stamp(cx + W);
+        if (cx + dw / 2 + pad > W) stamp(cx - W);
+      }
+    }
+  }
+
+  setPrintMeta(canvas, { band0: win.band0, bandH: win.bandH, span: win.span, start: win.full ? -Math.PI : start, full: win.full, widthMm: win.widthMm });
+  return canvas;
+}
+
+function legacyWrap(source: HTMLCanvasElement | null, motif: HTMLCanvasElement | null, spanCover: number): HTMLCanvasElement | null {
   const wrap = document.createElement("canvas");
   wrap.width = 2048;
   wrap.height = 1024;
@@ -786,28 +976,7 @@ export function wrapPrint(source: HTMLCanvasElement | null, motif: HTMLCanvasEle
   const span = Math.min(Math.max(0.28, spanCover), 0.88);
   const y = lip * wrap.height;
   const band = span * wrap.height;
-  const inkBox = (image: HTMLCanvasElement) => {
-    const read = image.getContext("2d", { willReadFrequently: true });
-    if (!read || image.width < 2 || image.height < 2) return null;
-    const data = read.getImageData(0, 0, image.width, image.height).data;
-    let minX = image.width;
-    let minY = image.height;
-    let maxX = -1;
-    let maxY = -1;
-    for (let y0 = 0; y0 < image.height; y0 += 2) {
-      for (let x0 = 0; x0 < image.width; x0 += 2) {
-        if (data[(y0 * image.width + x0) * 4 + 3] <= 24) continue;
-        if (x0 < minX) minX = x0;
-        if (y0 < minY) minY = y0;
-        if (x0 > maxX) maxX = x0;
-        if (y0 > maxY) maxY = y0;
-      }
-    }
-    if (maxX < 0) return null;
-    return { x: minX, y: minY, w: Math.max(2, maxX - minX + 2), h: Math.max(2, maxY - minY + 2) };
-  };
   if (motif) {
-    // Seamless full coverage - tile to fill entire texture height and width
     const iw = motif.width || 1;
     const ih = motif.height || 1;
     const cols = Math.max(3, Math.round(wrap.width / iw));
@@ -820,19 +989,13 @@ export function wrapPrint(source: HTMLCanvasElement | null, motif: HTMLCanvasEle
     }
   }
   if (source) {
-    const box = inkBox(source);
+    const box = inkBoxOf(source);
     if (box) {
-      const aspect = box.w / box.h;
-      const isSmall = box.w < 200 && box.h < 200;
-      const copies = 2; // always duplicate logo
-      const slot = wrap.width / copies;
-      // Offset so first copy is centered at front (U=0.5 maps to front of cup)
-      const offset = slot / 2;
-      for (let i = 0; i < copies; i += 1) {
+      const slot = wrap.width / 2;
+      for (const x of [wrap.width / 2, 0, wrap.width]) {
         const scale = Math.min((slot * 0.82) / box.w, (band * 0.82) / box.h);
         const dw = box.w * scale;
         const dh = box.h * scale;
-        const x = ((i * slot + offset) % wrap.width);
         ctx.drawImage(source, box.x, box.y, box.w, box.h, x - dw / 2, y + (band - dh) / 2, dw, dh);
       }
     }

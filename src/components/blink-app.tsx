@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { CupView, cupStills } from "@/components/cup-view";
+import { OtherColorDialog } from "@/components/other-color-dialog";
 import { Lineup } from "@/components/lineup";
 import {
   CUPS,
@@ -169,6 +170,7 @@ export function BlinkApp() {
   const [tracing, setTracing] = useState(false);
   const [tint, setTint] = useState<string | null>(null);
   const [cupTint, setCupTint] = useState<string | null>(null);
+  const [colorDialog, setColorDialog] = useState<"cup1" | "cup2" | null>(null);
   const [liquid, setLiquid] = useState<"none" | "beer" | "soda">("none");
   const [soloCard, setSoloCard] = useState<"beer" | "soda" | null>(null);
   const [gridTarget, setGridTarget] = useState<"cup1" | "cup2">("cup1");
@@ -592,7 +594,8 @@ export function BlinkApp() {
     const turns = [0, Math.PI * 0.28, Math.PI];
     const solid = cupStills(
       {
-        texture: wrapPrint(texture, motif, motif ? 0.9 : 0.6) ?? texture,
+        texture: wrapPrint(texture, motif, motif ? 0.9 : 0.6, { cup: item, area: itemArea }) ?? texture,
+        area: itemArea,
         top: item.top,
         bot: item.bot,
         heightMm: item.height,
@@ -693,6 +696,7 @@ export function BlinkApp() {
                     bot={item.bot}
                     heightMm={item.height}
                     cover={window ? window.h / item.height : 0.6}
+                    area={window}
                     spin={false}
                     className="pointer-events-none h-36 w-full"
                   />
@@ -735,6 +739,7 @@ export function BlinkApp() {
                             bot={cup.bot}
                             heightMm={cup.height}
                             cover={area ? (pattern ? 0.9 : area.h / cup.height) : 0.6}
+                            area={area}
                             spin={false}
                             className="h-32 w-full"
                           />
@@ -765,6 +770,7 @@ export function BlinkApp() {
                             bot={other.bot}
                             heightMm={other.height}
                             cover={otherArea ? (rightPattern ? 0.9 : otherArea.h / other.height) : 0.6}
+                            area={otherArea}
                             spin={false}
                             className="h-32 w-full"
                           />
@@ -788,7 +794,8 @@ export function BlinkApp() {
                 <div className="relative h-64 overflow-hidden rounded-2xl border border-line bg-white" onDoubleClick={() => setSoloCard("beer")}>
                   <CupView
                     key={`cup1-${chosenId}-${cupTint}-${liquid}`}
-                    texture={wrapPrint(shown, pattern, pattern ? 0.9 : 0.6) ?? shown}
+                    texture={(area ? wrapPrint(shown, pattern, pattern ? 0.9 : 0.6, { cup, area }) : wrapPrint(shown, pattern, pattern ? 0.9 : 0.6)) ?? shown}
+                    area={area}
                     top={cup.top}
                     bot={cup.bot}
                     heightMm={cup.height}
@@ -803,7 +810,8 @@ export function BlinkApp() {
                 <div className="relative h-64 overflow-hidden rounded-2xl border border-line bg-white" onDoubleClick={() => setSoloCard("soda")}>
                   <CupView
                     key={`cup2-${right.sample}-${right.cupTint}-${rightLiquid}`}
-                    texture={wrapPrint(otherTexture, rightPattern, rightPattern ? 0.9 : 0.6) ?? otherTexture}
+                    texture={(otherArea ? wrapPrint(otherTexture, rightPattern, rightPattern ? 0.9 : 0.6, { cup: other, area: otherArea }) : wrapPrint(otherTexture, rightPattern, rightPattern ? 0.9 : 0.6)) ?? otherTexture}
+                    area={otherArea}
                     top={other.top}
                     bot={other.bot}
                     heightMm={other.height}
@@ -872,6 +880,10 @@ export function BlinkApp() {
                     {STOCK.map((swatch) => (
                       <button key={`c-${swatch.hex}`} type="button" aria-label={swatch.hex} className={`h-9 w-9 rounded-full border ${cupTint === swatch.hex ? "border-ink ring-2 ring-ink" : "border-line"}`} style={{ background: swatch.hex }} onClick={() => armClick(`cup1-${swatch.hex}`, () => setCupTint(swatch.hex), () => setPantoneModal({ hex: swatch.hex, type: "cup" }))} />
                     ))}
+                    <button type="button" className="flex min-h-9 items-center gap-1 rounded-full border border-dashed border-ink px-2 text-xs" onClick={() => setColorDialog("cup1")}>
+                      <span className="h-6 w-6 rounded-full border border-dashed border-muted bg-white" style={customSwatch(cupTint)} />
+                      {t.otherColor}
+                    </button>
                   </div>
                   <label className="mt-2 block text-xs text-muted">
                     {t.qty}
@@ -941,6 +953,10 @@ export function BlinkApp() {
                     {STOCK.map((swatch) => (
                       <button key={`rc-${swatch.hex}`} type="button" aria-label={swatch.hex} className={`h-9 w-9 rounded-full border ${right.cupTint === swatch.hex ? "border-ink ring-2 ring-ink" : "border-line"}`} style={{ background: swatch.hex }} onClick={() => armClick(`cup2-${swatch.hex}`, () => setRight((current) => ({ ...current, cupTint: swatch.hex })), () => setPantoneModal({ hex: swatch.hex, type: "cup" }))} />
                     ))}
+                    <button type="button" className="flex min-h-9 items-center gap-1 rounded-full border border-dashed border-ink px-2 text-xs" onClick={() => setColorDialog("cup2")}>
+                      <span className="h-6 w-6 rounded-full border border-dashed border-muted bg-white" style={customSwatch(right.cupTint)} />
+                      {t.otherColor}
+                    </button>
                   </div>
                   <label className="mt-2 block text-xs text-muted">
                     {t.qty}
@@ -1126,7 +1142,8 @@ export function BlinkApp() {
               <p className="text-xs text-muted">Material em detalhe. Clica fora ou em Fechar para voltar.</p>
               <div className="mt-4 h-[60vh] rounded-2xl bg-white">
                 <CupView
-                  texture={item.id === cup.id ? shown : item.id === compareId ? otherTexture : null}
+                  texture={win && item.id === cup.id ? wrapPrint(shown, pattern, pattern ? 0.9 : 0.6, { cup: item, area: win }) ?? shown : win && item.id === compareId ? wrapPrint(otherTexture, rightPattern, rightPattern ? 0.9 : 0.6, { cup: item, area: win }) ?? otherTexture : null}
+                  area={win}
                   body={item.id === cup.id ? cupTint : item.id === compareId ? right.cupTint : null}
                   top={item.top}
                   bot={item.bot}
@@ -1172,6 +1189,18 @@ export function BlinkApp() {
           </div>
         </div>
       )}
+      <OtherColorDialog
+        open={colorDialog !== null}
+        color={colorDialog === "cup2" ? right.cupTint : cupTint}
+        title={t.otherColor}
+        lead={t.otherColorLead}
+        closeLabel={t.close}
+        onColor={(hex) => {
+          if (colorDialog === "cup2") setRight((current) => ({ ...current, cupTint: hex }));
+          else setCupTint(hex);
+        }}
+        onClose={() => setColorDialog(null)}
+      />
       {soloCard && (() => {
         const isBeer = soloCard === "beer";
         const item = isBeer ? cup : other;
@@ -1179,6 +1208,8 @@ export function BlinkApp() {
         const itemTint = isBeer ? cupTint : right.cupTint;
         const itemLiquid = isBeer ? liquid : rightLiquid;
         const itemPattern = isBeer ? pattern : rightPattern;
+        const itemArea = isBeer ? area : otherArea;
+        const itemPrint = (itemArea ? wrapPrint(itemTexture, itemPattern, itemPattern ? 0.9 : 0.6, { cup: item, area: itemArea }) : wrapPrint(itemTexture, itemPattern, itemPattern ? 0.9 : 0.6)) ?? itemTexture;
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setSoloCard(null)}>
             <div className="relative max-h-[90vh] w-full max-w-md overflow-y-auto rounded-3xl bg-white p-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
@@ -1189,7 +1220,8 @@ export function BlinkApp() {
               <p className="text-xs text-muted">Toca para pausar, solta para continuar</p>
               <div className="relative mt-3 h-80 rounded-2xl bg-white">
                 <CupView
-                  texture={wrapPrint(itemTexture, itemPattern, itemPattern ? 0.9 : 0.6) ?? itemTexture}
+                  texture={itemPrint}
+                  area={itemArea}
                   top={item.top}
                   bot={item.bot}
                   heightMm={item.height}
@@ -1199,6 +1231,27 @@ export function BlinkApp() {
                   spin={true}
                   className="absolute inset-0 h-full w-full"
                 />
+              </div>
+              <div className="mt-2 grid grid-cols-3 gap-1 rounded-2xl bg-white">
+                {([[-Math.PI / 2, t.angleLeft], [0, t.angleFront], [Math.PI / 2, t.angleRight]] as const).map(([view, name]) => (
+                  <figure key={name} className="m-0">
+                    <CupView
+                      texture={itemPrint}
+                      area={itemArea}
+                      top={item.top}
+                      bot={item.bot}
+                      heightMm={item.height}
+                      cover={itemPattern ? 0.9 : 0.6}
+                      body={itemTint}
+                      liquid={itemLiquid}
+                      spin={false}
+                      turn={view}
+                      label={`${item.name}, ${name}`}
+                      className="pointer-events-none h-44 w-full"
+                    />
+                    <figcaption className="text-center text-[11px] text-muted">{name}</figcaption>
+                  </figure>
+                ))}
               </div>
               <div className="mt-3 flex gap-2">
                 <button type="button" className="min-h-11 flex-1 rounded-xl bg-ink text-paper" onClick={() => setSoloCard(null)}>Confirmar</button>
@@ -1290,4 +1343,9 @@ function WindowPlate({ area, process, canvas, caption, cupColor = null }: { area
       </figcaption>
     </figure>
   );
+}
+
+function customSwatch(hex: string | null): { background: string; borderStyle: "solid" } | undefined {
+  if (!hex || STOCK.some((swatch) => swatch.hex.toLowerCase() === hex.toLowerCase())) return undefined;
+  return { background: hex, borderStyle: "solid" };
 }
