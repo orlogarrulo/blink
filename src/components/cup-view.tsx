@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { renderCupGL } from "@/lib/cup-gl";
+import { drinkLevels, renderCupGL } from "@/lib/cup-gl";
 
 type Props = {
   texture: HTMLCanvasElement | null;
@@ -53,8 +53,13 @@ export function CupView({ texture, top, bot, heightMm, cover, area = null, body 
     // The very first frame is drawn at a lighter resolution so the cup shows up at once
     // (a big ray-traced frame is costly on phones); the next frame is full resolution.
     let quick = true;
+    const now = () => performance.now();
+    // A cup with a drink costs more to draw; if spinning frames run slow, spin at a lighter
+    // resolution and redraw at full resolution as soon as it stops.
+    let slowFrames = 0;
+    let lite = false;
 
-    const paint = () => {
+    const paint = (light = false) => {
       const spec = live.current;
       const width = canvas.clientWidth;
       const height = canvas.clientHeight;
@@ -67,6 +72,7 @@ export function CupView({ texture, top, bot, heightMm, cover, area = null, body 
           dirty.current = true;
         }
       }
+      if (light) ratio = Math.min(ratio, Math.max(1.5, ratio * 0.7));
       const cap = 4096 / Math.max(width, height);
       ratio = Math.min(ratio, cap);
       const bw = Math.max(2, Math.floor(width * ratio));
@@ -77,7 +83,8 @@ export function CupView({ texture, top, bot, heightMm, cover, area = null, body 
       }
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, bw, bh);
-      const ok = renderCupGL(ctx, bw, bh, spec, angle.current);
+      const scene = spec.liquid && spec.liquid !== "none" && spec.spin && !reduce ? { ...spec, time: now() / 1000 } : spec;
+      const ok = renderCupGL(ctx, bw, bh, scene, angle.current);
       if (!ok) {
         ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
         drawCup2d(ctx, width, height, spec, angle.current);
@@ -88,15 +95,20 @@ export function CupView({ texture, top, bot, heightMm, cover, area = null, body 
       frame = requestAnimationFrame(loop);
       if (!visible.current || document.hidden) return;
       const moving = live.current.spin && !reduce && !drag.current && !paused.current;
+      const drink = Boolean(live.current.liquid && live.current.liquid !== "none");
       if (moving) {
         const dt = last ? Math.min(64, now - last) : 16;
         angle.current += 0.00042 * dt;
         dirty.current = true;
+        slowFrames = dt > 26 ? Math.min(40, slowFrames + 1) : Math.max(0, slowFrames - 1);
+      } else if (lite) {
+        dirty.current = true;
       }
+      lite = drink && moving && slowFrames > 15;
       last = now;
       if (dirty.current) {
         dirty.current = false;
-        paint();
+        paint(lite);
       }
     };
     frame = requestAnimationFrame(loop);
@@ -248,6 +260,65 @@ function drawCup2d(
         ctx.lineTo(cx - botR - 0.6, topCy + bodyH);
         ctx.closePath();
       };
+      // Drink behind the frosted wall, painted before the cup colour so an opaque cup hides it.
+      if (spec.liquid && spec.liquid !== "none") {
+        const beer = spec.liquid === "beer";
+        const H = spec.heightMm;
+        const fill = drinkLevels(H, spec.liquid);
+        const yAt = (mm: number) => topCy + bodyH * (1 - mm / H);
+        const xAt = (mm: number) => (botR + (topR - botR) * (mm / H)) * 0.985;
+        const band = (m0: number, m1: number, wave = 0) => {
+          ctx.beginPath();
+          ctx.moveTo(cx - xAt(m1), yAt(m1));
+          ctx.lineTo(cx + xAt(m1), yAt(m1));
+          ctx.lineTo(cx + xAt(m0), yAt(m0));
+          if (wave) {
+            for (let i = 1; i < 24; i += 1) {
+              const t = i / 24;
+              ctx.lineTo(cx + xAt(m0) - 2 * xAt(m0) * t, yAt(m0) + Math.sin(i * 2.3) * wave);
+            }
+          }
+          ctx.lineTo(cx - xAt(m0), yAt(m0));
+          ctx.closePath();
+        };
+        ctx.save();
+        band(2.5, fill.level);
+        const across = ctx.createLinearGradient(cx - topR, 0, cx + topR, 0);
+        const stops = beer ? ["#b8691a", "#eda238", "#f7bc55", "#f0ad40", "#bf6d1c"] : ["#5c1e0c", "#2a0f07", "#1a0905", "#240d06", "#64220e"];
+        stops.forEach((c, i) => across.addColorStop(i / (stops.length - 1), c));
+        ctx.fillStyle = across;
+        ctx.fill();
+        const down = ctx.createLinearGradient(0, yAt(fill.level), 0, yAt(2.5));
+        down.addColorStop(0, beer ? "rgba(255,226,150,0.28)" : "rgba(0,0,0,0)");
+        down.addColorStop(0.25, "rgba(0,0,0,0)");
+        down.addColorStop(1, beer ? "rgba(110,45,0,0.3)" : "rgba(60,10,0,0.25)");
+        ctx.fillStyle = down;
+        ctx.fill();
+        ctx.clip();
+        let seed = 7;
+        const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+        ctx.fillStyle = beer ? "rgba(255,240,200,0.45)" : "rgba(190,140,110,0.35)";
+        for (let i = 0; i < 70; i += 1) {
+          const mm = 3 + rnd() * (fill.level - 4);
+          const x = cx + (rnd() * 2 - 1) * xAt(mm) * 0.9;
+          ctx.beginPath();
+          ctx.arc(x, yAt(mm), Math.max(0.5, topR * 0.006) * (0.6 + rnd()), 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+        ctx.save();
+        band(fill.level, fill.foamTop, beer ? Math.max(0.6, bodyH * 0.004) : 0);
+        ctx.fillStyle = beer ? "#f5efe0" : "#8a6a58";
+        ctx.fill();
+        ctx.restore();
+        // Frosted veil over the drink.
+        ctx.save();
+        band(2.5, fill.foamTop);
+        ctx.fillStyle = "rgba(246,246,244,0.1)";
+        ctx.fill();
+        ctx.restore();
+      }
+
       if (spec.body) {
         ctx.save();
         printPath();
@@ -262,28 +333,6 @@ function drawCup2d(
         imlSheen.addColorStop(1, "rgba(255,255,255,0)");
         ctx.fillStyle = imlSheen;
         ctx.fill();
-        ctx.restore();
-      }
-
-      if (spec.liquid && spec.liquid !== "none") {
-        const liqLevel = spec.liquid === "beer" ? 0.82 : 0.88;
-        const liqTop = topCy + bodyH * (1 - liqLevel);
-        const liqColor = spec.liquid === "beer" ? "rgba(232,168,32,0.85)" : "rgba(20,8,6,0.9)";
-        ctx.save();
-        ctx.beginPath();
-        ctx.moveTo(cx - topR * 0.95, liqTop);
-        ctx.lineTo(cx + topR * 0.95, liqTop);
-        ctx.lineTo(cx + botR * 0.98, topCy + bodyH - 2);
-        ctx.lineTo(cx - botR * 0.98, topCy + bodyH - 2);
-        ctx.closePath();
-        ctx.fillStyle = liqColor;
-        ctx.fill();
-        if (spec.liquid === "beer") {
-          ctx.fillStyle = "rgba(255,247,238,0.95)";
-          ctx.beginPath();
-          ctx.ellipse(cx, liqTop, topR * 0.88, 6, 0, 0, Math.PI * 2);
-          ctx.fill();
-        }
         ctx.restore();
       }
 

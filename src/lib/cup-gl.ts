@@ -18,6 +18,8 @@ export type CupScene = {
   cover: number;
   body?: string | null;
   liquid?: "none" | "beer" | "soda";
+  /** Seconds, drives the rising bubbles (fixed for stills). */
+  time?: number;
   area?: { w: number; h: number; rim?: number; full?: boolean } | null;
 };
 
@@ -48,8 +50,12 @@ uniform float uSpan;
 uniform float uStart;
 uniform int uFull;
 uniform vec4 uBody;
-uniform int uLiquid;
+#ifndef LIQ
+#define LIQ 0
+#endif
 uniform float uLevel;
+uniform float uFoamTop;
+uniform float uTime;
 
 const float PI = 3.14159265;
 
@@ -57,10 +63,113 @@ vec4 over(vec4 top, vec4 bot) { return top + bot * (1.0 - top.a); }
 
 float rAt(float y) { return uRb + (uRt - uRb) * y / uH; }
 
-vec3 liquidColor(float depth) {
-  if (uLiquid == 1) return mix(vec3(0.96, 0.70, 0.18), vec3(0.80, 0.47, 0.07), clamp(depth, 0.0, 1.0));
-  return mix(vec3(0.30, 0.10, 0.05), vec3(0.08, 0.03, 0.02), clamp(depth, 0.0, 1.0));
+#ifdef DRINK
+float hash12(vec2 p) {
+  vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+  p3 += dot(p3, p3.yzx + 33.33);
+  return fract((p3.x + p3.y) * p3.z);
 }
+float vnoise(vec2 p) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  vec2 u = f * f * (3.0 - 2.0 * f);
+  return mix(mix(hash12(i), hash12(i + vec2(1.0, 0.0)), u.x), mix(hash12(i + vec2(0.0, 1.0)), hash12(i + vec2(1.0, 1.0)), u.x), u.y);
+}
+
+// Fine bubbles rising in columns; a = (arc mm around the cup, height mm). fw = mm per pixel.
+float risingBubbles(vec2 a, float t, float density, float rad, float fw) {
+  float cw = 2.4;
+  float col = floor(a.x / cw);
+  float h = hash12(vec2(col, 7.0));
+  if (h > density) return 0.0;
+  float speed = 7.0 + 9.0 * hash12(vec2(col, 3.0));
+  float x0 = (col + 0.25 + 0.5 * hash12(vec2(col, 5.0))) * cw;
+  float yy = a.y - t * speed - 60.0 * h;
+  float cs = 3.0 + 5.0 * hash12(vec2(col, 9.0));
+  float cell = floor(yy / cs);
+  float pres = step(0.4, hash12(vec2(col, cell)));
+  float cy = (cell + 0.5) * cs;
+  vec2 d = vec2(a.x - x0 - 0.25 * sin(cell * 1.7 + t * 2.5), yy - cy);
+  float r = max(rad * (0.7 + 0.6 * hash12(vec2(cell, col))), fw * 0.9);
+  return pres * (1.0 - smoothstep(r * 0.45, r, length(d))) * (rad / r);
+}
+
+// Round dots on a jittered grid (condensation, bubbles stuck to the wall, fizz).
+float dots(vec2 a, float cell, float chance, float rMin, float rMax, float fw, out float hl) {
+  vec2 id = floor(a / cell);
+  hl = 0.0;
+  if (hash12(id + 17.0) > chance) return 0.0;
+  float r = max(mix(rMin, rMax, hash12(id + 9.4)), fw * 0.8);
+  float room = max(0.0, cell * 0.5 - r);
+  vec2 c = (id + 0.5) * cell + (vec2(hash12(id), hash12(id + 3.1)) - 0.5) * 2.0 * room;
+  vec2 d = a - c;
+  float k = (1.0 - smoothstep(r * 0.8, r, length(d))) * min(1.0, rMin / max(fw, 1e-3) * 1.6);
+  hl = k * (1.0 - smoothstep(0.0, r * 0.45, length(d - vec2(-0.3 * r, 0.35 * r))));
+  return k;
+}
+
+// Light that crosses the drink: Beer-Lambert absorption along the path, darker at the edges and the foot.
+vec3 drinkColor(float L, float xs, float r, float y, float lev, vec2 a, float fw) {
+  bool beer = LIQ == 1;
+  float detail = 1.0 - smoothstep(0.35, 0.9, fw);
+  vec3 c;
+  if (beer) {
+    float ax = abs(xs);
+    float Le = L + 0.7 * r * ax * ax * sqrt(ax) + 0.42 * max(0.0, lev - y);
+    c = vec3(1.0, 0.985, 0.95) * exp(-vec3(0.0020, 0.0070, 0.022) * Le);
+    c *= mix(0.74, 1.0, smoothstep(3.0, 16.0, y));
+    c += vec3(0.07, 0.045, 0.0) * smoothstep(lev - 16.0, lev, y);
+    c += vec3(0.10, 0.07, 0.02) * exp(-pow((xs + 0.5) / 0.13, 2.0));
+    float b = risingBubbles(a, uTime, 0.28, 0.28, fw) * detail;
+    c += b * vec3(0.26, 0.22, 0.14);
+    c = mix(c, vec3(0.93, 0.79, 0.45), 0.35 * smoothstep(lev - 3.0, lev, y));
+  } else {
+    float Le = L * 0.6 + 0.25 * max(0.0, lev - y);
+    c = mix(vec3(0.46, 0.15, 0.065), vec3(0.075, 0.03, 0.018), smoothstep(4.0, 30.0, Le));
+    c += vec3(0.20, 0.06, 0.025) * pow(abs(xs), 3.0);
+    c += vec3(0.12, 0.04, 0.02) * exp(-pow((xs + 0.5) / 0.12, 2.0));
+    c *= mix(0.8, 1.0, smoothstep(3.0, 14.0, y));
+    float hl;
+    float s = dots(a + vec2(5.0, 1.0), 3.4, 0.25, 0.2, 0.42, fw, hl) * detail;
+    c = mix(c, c * 1.8 + vec3(0.05, 0.03, 0.02), s * 0.6) + hl * 0.28 * detail;
+    float b = risingBubbles(a + vec2(1.3, 0.0), uTime * 1.3, 0.22, 0.3, fw) * detail;
+    c += b * vec3(0.28, 0.17, 0.12);
+  }
+  return c;
+}
+
+// Beer foam (or the thin fizz on a soda) seen against the wall.
+vec3 foamColor(vec2 a, float y, float lev, float ndv, float fw) {
+  float detail = 1.0 - smoothstep(0.35, 0.9, fw);
+  float n = vnoise(a * vec2(0.7, 0.9)) * 0.6 + vnoise(a * 2.6 + 4.0) * 0.4;
+  if (LIQ == 2) {
+    vec3 f = mix(vec3(0.42, 0.26, 0.18), vec3(0.74, 0.62, 0.52), smoothstep(lev, lev + 1.6, y));
+    return f * (0.9 + 0.2 * mix(0.5, n, detail));
+  }
+  vec3 f = vec3(0.975, 0.955, 0.895) * (0.95 + 0.05 * mix(0.5, n, detail));
+  f -= detail * 0.035 * smoothstep(0.7, 0.9, n);
+  f = mix(vec3(0.90, 0.78, 0.52), f, smoothstep(lev - 0.5, lev + 3.5, y));
+  return f * (0.95 + 0.05 * ndv);
+}
+
+// The drink's top seen from above (through the mouth).
+vec3 surfaceColor(vec2 sp, float rr, float fw) {
+  float detail = 1.0 - smoothstep(0.35, 0.9, fw);
+  if (LIQ == 1) {
+    float n = vnoise(sp * 1.1) * 0.55 + vnoise(sp * 2.7 + 2.0) * 0.45;
+    vec3 f = vec3(0.98, 0.958, 0.895) * (0.93 + 0.07 * mix(0.5, n, detail));
+    f -= detail * 0.06 * smoothstep(0.68, 0.88, n);
+    return f * (0.9 + 0.1 * (1.0 - rr * rr));
+  }
+  vec3 c = vec3(0.11, 0.045, 0.028) + vec3(0.22) * smoothstep(0.2, 1.0, rr) * 0.35;
+  float hl;
+  float ring = smoothstep(0.84, 0.97, rr);
+  float fz = dots(sp, 1.6, 0.5, 0.25, 0.6, fw, hl) * detail;
+  c = mix(c, vec3(0.58, 0.44, 0.33), max(ring * (0.75 + 0.25 * sin(sp.x * 3.1 + sin(sp.y * 2.3))), fz * 0.6));
+  return c + hl * 0.25 * detail;
+}
+
+#endif
 
 // Inside of the far wall, seen through the mouth or through the frosted front.
 vec4 interior(vec3 P, vec3 D) {
@@ -69,7 +178,9 @@ vec4 interior(vec3 P, vec3 D) {
   float side = abs(P.x) / max(1.0, rAt(y));
   c -= 0.05 * side * side;
   vec3 col = vec3(c, c + 0.004, c + 0.01);
-  if (uLiquid > 0 && P.y < uLevel) col = liquidColor(1.0 - P.y / max(1.0, uLevel));
+#ifdef DRINK
+  if (P.y < uFoamTop && P.y > 5.0) col = P.y < uLevel ? (LIQ == 1 ? vec3(0.80, 0.50, 0.12) : vec3(0.10, 0.04, 0.025)) : (LIQ == 1 ? vec3(0.95, 0.92, 0.85) : vec3(0.5, 0.38, 0.3));
+#endif
   return vec4(col, 1.0);
 }
 
@@ -98,7 +209,8 @@ void main() {
     vec3 G = O + tg * D;
     float rr = length(vec2(G.x * 0.92, G.z - uRb * 0.12));
     float sh = 0.13 * (1.0 - smoothstep(uRb * 0.70, uRb * 1.32, rr));
-    color = vec4(vec3(0.42, 0.44, 0.46) * sh, sh);
+    vec3 shc = LIQ == 1 && uBody.a == 0.0 ? vec3(0.50, 0.43, 0.30) : vec3(0.42, 0.44, 0.46);
+    color = vec4(shc * sh, sh);
   }
 
   // Mouth: top plane of the rim.
@@ -124,15 +236,22 @@ void main() {
     if (P2.y >= 0.0) back = interior(P2, D);
     else back = vec4(vec3(0.86, 0.865, 0.875), 1.0);
   }
-  if (uLiquid > 0) {
-    float tl = (uLevel - O.y) / D.y;
+#ifdef DRINK
+  {
+    float sTop = LIQ == 1 ? uFoamTop : uLevel;
+    float tl = (sTop - O.y) / D.y;
     vec3 PL = O + tl * D;
     float enter = P1.y <= uH ? t1 : tt;
-    if (tl > enter && tl < t2 && length(PL.xz) < rAt(uLevel)) {
-      vec3 sc = uLiquid == 1 ? vec3(0.985, 0.955, 0.90) : vec3(0.16, 0.06, 0.035);
-      back = vec4(sc, 1.0);
+    float rS = rAt(sTop);
+    if (tl > enter && tl < t2 && length(PL.xz) < rS) {
+      float fwS = max(fwidth(PL.x), 1e-3);
+      vec2 sp = PL.xz;
+      float ang = atan(sp.x, sp.y) + uTurn;
+      float rr = length(sp) / rS;
+      back = vec4(surfaceColor(vec2(cos(ang), sin(ang)) * rr * rS, rr, fwS), 1.0);
     }
   }
+#endif
 
   // Looking down into the mouth.
   if (P1.y > uH && inMouth > 0.0 && disc > 0.0) {
@@ -164,7 +283,34 @@ void main() {
     frostC += 0.07 * exp(-pow((y - 4.9) / 0.35, 2.0));
     frostC = mix(frostC, vec3(0.62, 0.74, 0.75), 0.55 * exp(-pow((y - 0.7) / 0.55, 2.0)));
     float frostA = mix(0.80, 0.93, smoothstep(0.2, 0.9, edge));
-    if (uLiquid > 0 && P1.y < uLevel) frostA *= 0.62;
+    float wet = 0.0;
+#ifdef DRINK
+    // The drink behind the frosted wall: absorbed light, foam, bubbles, all softened by the frosting.
+    float thetaL = atan(P1.x, P1.z) + uTurn; // same angle as the print below
+    vec2 aL = vec2(thetaL * (uRt + uRb) * 0.5, P1.y);
+    float fwL = max(fwY, 1e-3);
+    if (disc > 0.0) {
+      float lev = uLevel + (LIQ == 1 ? 0.55 * sin(aL.x * 0.23 + 1.3) + 0.35 * sin(aL.x * 0.61 + 0.4) : 0.0);
+      float topF = uFoamTop + (LIQ == 1 ? 0.7 + 0.5 * sin(aL.x * 0.31 + 2.0) + 0.3 * sin(aL.x * 0.83) + 0.6 * abs(xs * xs * xs) : 0.3 + 0.3 * sin(aL.x * 0.5));
+      float soft = max(fwL, 0.35);
+      if (P1.y < topF + soft) {
+        float L = max(0.0, (P2.y >= 0.0 ? t2 : (-O.y / D.y)) - t1);
+        float edgeK = smoothstep(0.3, 0.95, edge);
+        float toFoam = smoothstep(lev - 0.7, lev + 0.7, P1.y);
+        vec3 dc = toFoam < 1.0 ? drinkColor(L, xs, r, P1.y, lev, aL, fwL) : vec3(0.0);
+        if (toFoam > 0.0) dc = mix(dc, foamColor(aL, P1.y, lev, ndv, fwL), toFoam);
+        float aLiq = mix(LIQ == 1 ? 0.15 : 0.1, 0.45, edgeK);
+        float aFoam = mix(0.16, 0.40, edgeK);
+        float inside = 1.0 - smoothstep(topF - soft, topF + soft, P1.y);
+        // The drink sits on the inner floor, above the thick clear foot.
+        inside *= smoothstep(4.6, 6.0, P1.y);
+        back = mix(back, vec4(dc, 1.0), inside);
+        frostA = mix(frostA, mix(aLiq, aFoam, toFoam), inside);
+        if (LIQ == 2) frostC = mix(frostC, frostC * vec3(1.0, 0.93, 0.88), inside * (1.0 - toFoam));
+        wet = inside;
+      }
+    }
+#endif
     vec4 wall = over(vec4(frostC * frostA, frostA), back);
 
     // A coloured cup: the colour covers the whole wall, from just under the lip to the foot.
@@ -172,8 +318,19 @@ void main() {
       float bodyMask = smoothstep(4.6, 5.6, y) * (1.0 - smoothstep(uH - 3.0, uH - 2.2, y));
       float litB = 0.875 + 0.10 * pow(ndv, 0.6) - 0.07 * smoothstep(0.5, 0.95, edge);
       vec3 bodyRgb = uBody.rgb * litB + 0.055 * exp(-pow((xs + 0.46) / 0.12, 2.0));
+      if (wet > 0.0) bodyRgb *= LIQ == 1 ? 0.96 : 0.91;
       wall = over(vec4(bodyRgb, 1.0) * bodyMask, wall);
     }
+
+#ifdef DRINK
+    // Cold drink: fine condensation on the outside, under the print.
+    if (wet > 0.0) {
+      float hl;
+      float dm = dots(aL * vec2(1.0, 1.15), 2.3, 0.55, 0.22, 0.75, fwL, hl);
+      dm *= 1.0 - smoothstep(0.6, 0.95, edge);
+      wall.rgb = mix(wall.rgb, wall.rgb * 0.9, dm * 0.45) + hl * 0.16 * wall.a;
+    }
+#endif
 
     // Print window on the outer surface.
     float slant = sqrt(uH * uH + (uRt - uRb) * (uRt - uRb)) / uH;
@@ -216,11 +373,15 @@ void main() {
 }
 `;
 
+type Prog = { prog: WebGLProgram; loc: Record<string, WebGLUniformLocation | null> };
+
 type GL = {
   gl: WebGL2RenderingContext;
   canvas: HTMLCanvasElement;
-  prog: WebGLProgram;
-  loc: Record<string, WebGLUniformLocation | null>;
+  /** Empty cup; the drink variant is compiled on first use so cups without a drink pay nothing for it. */
+  plain: Prog;
+  /** Beer (1) and soda (2) variants: the drink is a compile-time constant so each program carries only its own code. */
+  drinks: Record<number, Prog | null>;
   aniso: number;
   anisoExt: EXT_texture_filter_anisotropic | null;
 };
@@ -229,6 +390,42 @@ let shared: GL | null | undefined;
 const textures = new WeakMap<HTMLCanvasElement, WebGLTexture>();
 const recent: HTMLCanvasElement[] = [];
 const MAX_TEXTURES = 28;
+
+const UNIFORMS = ["uRes", "uO", "uS", "uCam", "uRight", "uUp", "uFwd", "uRt", "uRb", "uH", "uTurn", "uTex", "uHasTex", "uBand0", "uBandH", "uSpan", "uStart", "uFull", "uBody", "uLevel", "uFoamTop", "uTime"];
+
+function buildProgram(gl: WebGL2RenderingContext, liquid: number): Prog {
+  const compile = (type: number, src: string) => {
+    const sh = gl.createShader(type);
+    if (!sh) throw new Error("shader");
+    gl.shaderSource(sh, src);
+    gl.compileShader(sh);
+    if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(sh) || "compile");
+    return sh;
+  };
+  const prog = gl.createProgram();
+  if (!prog) throw new Error("program");
+  const frag = liquid ? FRAG.replace("precision highp float;", `precision highp float;\n#define DRINK 1\n#define LIQ ${liquid}`) : FRAG;
+  gl.attachShader(prog, compile(gl.VERTEX_SHADER, VERT));
+  gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, frag));
+  gl.bindAttribLocation(prog, 0, "aPos");
+  gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog) || "link");
+  const loc: Prog["loc"] = {};
+  for (const name of UNIFORMS) loc[name] = gl.getUniformLocation(prog, name);
+  return { prog, loc };
+}
+
+function drinkProgram(g: GL, liquid: number): Prog | null {
+  if (!(liquid in g.drinks)) {
+    try {
+      g.drinks[liquid] = buildProgram(g.gl, liquid);
+    } catch (error) {
+      console.warn("[blink] efeito de bebida indisponível", error);
+      g.drinks[liquid] = null;
+    }
+  }
+  return g.drinks[liquid];
+}
 
 function init(): GL | null {
   if (shared !== undefined) return shared;
@@ -240,36 +437,18 @@ function init(): GL | null {
     canvas.height = 2;
     const gl = canvas.getContext("webgl2", { premultipliedAlpha: true, alpha: true, antialias: false, preserveDrawingBuffer: true });
     if (!gl) return null;
-    const compile = (type: number, src: string) => {
-      const sh = gl.createShader(type);
-      if (!sh) throw new Error("shader");
-      gl.shaderSource(sh, src);
-      gl.compileShader(sh);
-      if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(sh) || "compile");
-      return sh;
-    };
-    const prog = gl.createProgram();
-    if (!prog) return null;
-    gl.attachShader(prog, compile(gl.VERTEX_SHADER, VERT));
-    gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, FRAG));
-    gl.linkProgram(prog);
-    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog) || "link");
-    gl.useProgram(prog);
+    const plain = buildProgram(gl, 0);
     const buf = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, buf);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
-    const aPos = gl.getAttribLocation(prog, "aPos");
-    gl.enableVertexAttribArray(aPos);
-    gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
-    const names = ["uRes", "uO", "uS", "uCam", "uRight", "uUp", "uFwd", "uRt", "uRb", "uH", "uTurn", "uTex", "uHasTex", "uBand0", "uBandH", "uSpan", "uStart", "uFull", "uBody", "uLiquid", "uLevel"];
-    const loc: GL["loc"] = {};
-    for (const name of names) loc[name] = gl.getUniformLocation(prog, name);
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
     const anisoExt = gl.getExtension("EXT_texture_filter_anisotropic");
     const aniso = anisoExt ? Math.min(8, gl.getParameter(anisoExt.MAX_TEXTURE_MAX_ANISOTROPY_EXT) as number) : 0;
     canvas.addEventListener("webglcontextlost", () => {
       shared = null;
     });
-    shared = { gl, canvas, prog, loc, aniso, anisoExt };
+    shared = { gl, canvas, plain, drinks: {}, aniso, anisoExt };
   } catch (error) {
     console.warn("[blink] WebGL indisponível, a usar desenho 2D", error);
     shared = null;
@@ -336,6 +515,17 @@ function hexRgb(hex: string): [number, number, number] | null {
   return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
 }
 
+/** Drink level and foam top in mm: always a clear lip under the rim, beer gets a 6–14 mm head. */
+export function drinkLevels(H: number, liquid: "none" | "beer" | "soda") {
+  if (liquid === "beer") {
+    const foamTop = H - Math.max(7, H * 0.075);
+    const foam = Math.min(14, Math.max(6, H * 0.085));
+    return { level: foamTop - foam, foamTop };
+  }
+  const level = H - Math.max(8, H * 0.085);
+  return { level, foamTop: level + 2.4 };
+}
+
 /** Print window in mould millimetres for a cup, with the same rules the art composer uses. */
 export function bandFor(scene: Pick<CupScene, "top" | "bot" | "heightMm" | "cover" | "area">, meta: PrintMeta | null) {
   if (meta) return { band0: meta.band0, bandH: meta.bandH };
@@ -357,7 +547,10 @@ export function bandFor(scene: Pick<CupScene, "top" | "bot" | "heightMm" | "cove
 export function renderCupGL(ctx: CanvasRenderingContext2D, w: number, h: number, scene: CupScene, turn: number): boolean {
   const g = init();
   if (!g) return false;
-  const { gl, canvas, loc } = g;
+  const { gl, canvas } = g;
+  const liquid = scene.liquid === "beer" ? 1 : scene.liquid === "soda" ? 2 : 0;
+  const program = (liquid ? drinkProgram(g, liquid) : null) ?? g.plain;
+  const loc = program.loc;
   if (gl.isContextLost()) return false;
   const W = Math.max(2, Math.min(4096, Math.round(w)));
   const Hh = Math.max(2, Math.min(4096, Math.round(h)));
@@ -424,7 +617,7 @@ export function renderCupGL(ctx: CanvasRenderingContext2D, w: number, h: number,
 
   gl.viewport(0, 0, W, Hh);
   gl.disable(gl.BLEND);
-  gl.useProgram(g.prog);
+  gl.useProgram(program.prog);
   gl.uniform2f(loc.uRes, W, Hh);
   gl.uniform2f(loc.uO, ox, oy);
   gl.uniform1f(loc.uS, s);
@@ -443,9 +636,10 @@ export function renderCupGL(ctx: CanvasRenderingContext2D, w: number, h: number,
   gl.uniform1i(loc.uFull, full);
   const body = scene.body ? hexRgb(scene.body) : null;
   gl.uniform4f(loc.uBody, body ? body[0] : 0, body ? body[1] : 0, body ? body[2] : 0, body ? 1 : 0);
-  const liquid = scene.liquid === "beer" ? 1 : scene.liquid === "soda" ? 2 : 0;
-  gl.uniform1i(loc.uLiquid, liquid);
-  gl.uniform1f(loc.uLevel, H * (liquid === 1 ? 0.82 : 0.86));
+  const fill = drinkLevels(H, scene.liquid ?? "none");
+  gl.uniform1f(loc.uLevel, fill.level);
+  gl.uniform1f(loc.uFoamTop, fill.foamTop);
+  gl.uniform1f(loc.uTime, scene.time ?? 4.2);
   gl.activeTexture(gl.TEXTURE0);
   let hasTex = 0;
   if (scene.texture && scene.texture.width > 1 && scene.texture.height > 1) {

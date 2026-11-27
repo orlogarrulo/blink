@@ -611,20 +611,18 @@ export function BlinkApp() {
       label: unrolled,
       bodyColor: body,
     });
-    const turns = [0, Math.PI * 0.28, Math.PI];
-    const solid = cupStills(
-      {
-        texture: unrolled,
-        area: itemArea,
-        top: item.top,
-        bot: item.bot,
-        heightMm: item.height,
-        cover: motif ? 0.9 : itemArea.h / item.height,
-        body,
-        liquid: side === "beer" ? liquid : rightLiquid,
-      },
-      turns,
-    );
+    const stillSpec = {
+      texture: unrolled,
+      area: itemArea,
+      top: item.top,
+      bot: item.bot,
+      heightMm: item.height,
+      cover: motif ? 0.9 : itemArea.h / item.height,
+      body,
+      liquid: side === "beer" ? liquid : rightLiquid,
+    };
+    // The upside-down view cannot hold a drink, so it is drawn empty.
+    const solid = [...cupStills(stillSpec, [0, Math.PI * 0.28]), ...cupStills({ ...stillSpec, liquid: "none" }, [Math.PI])];
     const viewLabels = ["Frente", "Três quartos", "Lado / invertido"];
     // The third view is upside down (mouth facing down, as if on a table); viewsSheet keeps it aligned.
     const views = viewsSheet(item.name, viewLabels, solid, [false, false, true]);
@@ -748,6 +746,7 @@ export function BlinkApp() {
                             heightMm={cup.height}
                             cover={area ? (pattern ? 0.9 : area.h / cup.height) : 0.6}
                             area={area}
+                            liquid={liquid}
                             spin={false}
                             className="h-32 w-full"
                           />
@@ -779,6 +778,7 @@ export function BlinkApp() {
                             heightMm={other.height}
                             cover={otherArea ? (rightPattern ? 0.9 : otherArea.h / other.height) : 0.6}
                             area={otherArea}
+                            liquid={rightLiquid}
                             spin={false}
                             className="h-32 w-full"
                           />
