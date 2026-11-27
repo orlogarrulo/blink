@@ -21,7 +21,10 @@ import {
 } from "@/lib/catalog";
 import { LANGS, detectLang, localeFor, text, type Lang } from "@/lib/copy";
 import { printMetaOf } from "@/lib/print-meta";
-import { canvasPdf, cmyk, composeLogos, composePattern, dominantColors, downloadBlob, openPdf, paintLabel, sheetCanvas, techSheet, tintCanvas, viewsSheet, wrapPrint } from "@/lib/print";
+import { ART_PLACE0, type ArtPlace } from "@/lib/art-place";
+import { canvasPdf, cmyk, composeLogos, composePattern, dominantColors, downloadBlob, openPdf, paintLabel, sheetCanvas, techSheet, tintCanvas, viewsSheet, wrapPrint, heroSheet } from "@/lib/print";
+import { qrCanvas } from "@/lib/qr-mark";
+import { shareUrl } from "@/lib/share-link";
 import { BOX_CUPS, airFreight, chargedQty, SHEET_KZ_PER_EUR, cupWeightScale } from "@/lib/freight";
 import { dialForMarket, detectMarket, KZ_PER_EUR, pricePair, type Market } from "@/lib/money";
 import { DIALS } from "@/lib/phone";
@@ -178,6 +181,8 @@ export function BlinkApp() {
   const [cupTint, setCupTint] = useState<string | null>(null);
   const [colorDialog, setColorDialog] = useState<"cup1" | "cup2" | null>(null);
   const [liquid, setLiquid] = useState<"none" | "beer" | "soda">("none");
+  const [place, setPlace] = useState<ArtPlace>(ART_PLACE0);
+  const [rightPlace, setRightPlace] = useState<ArtPlace>(ART_PLACE0);
   const [soloCard, setSoloCard] = useState<"beer" | "soda" | null>(null);
   const [gridTarget, setGridTarget] = useState<"cup1" | "cup2">("cup1");
   const [pantoneModal, setPantoneModal] = useState<{ hex: string; type: "logo" | "cup" } | null>(null);
@@ -526,6 +531,16 @@ export function BlinkApp() {
     });
   }
 
+  const wrapArt = (
+    source: HTMLCanvasElement | null,
+    motif: HTMLCanvasElement | null,
+    item: { top: number; bot: number; height: number },
+    itemArea: typeof area,
+    itemPlace: ArtPlace,
+    span = 0.6,
+    ppm?: number,
+  ) => (itemArea ? wrapPrint(source, motif, span, { cup: item, area: itemArea, ppm, place: itemPlace }) : wrapPrint(source, motif, span));
+
   async function exportCard(side: "beer" | "soda") {
     const item = side === "beer" ? cup : other;
     const itemArea = side === "beer" ? area : otherArea;
@@ -580,7 +595,8 @@ export function BlinkApp() {
     });
     if (ink) printLabel = tintCanvas(printLabel, ink, itemProcess);
     // The flat label in the PDF is the print exactly as it sits on the cup (same copies, same sizes).
-    const unrolled = wrapPrint(printLabel, motif, 0.9, { cup: item, area: itemArea }) ?? printLabel;
+    const itemPlace = side === "beer" ? place : rightPlace;
+    const unrolled = wrapPrint(printLabel, motif, 0.9, { cup: item, area: itemArea, place: itemPlace }) ?? printLabel;
     const unrolledMeta = printMetaOf(unrolled);
     const sheetArea = unrolledMeta
       ? { ...itemArea, w: Math.round(unrolledMeta.widthMm * 10) / 10, h: Math.round(unrolledMeta.bandH * 10) / 10 }
@@ -626,7 +642,24 @@ export function BlinkApp() {
     const viewLabels = ["Frente", "Três quartos", "Lado / invertido"];
     // The third view is upside down (mouth facing down, as if on a table); viewsSheet keeps it aligned.
     const views = viewsSheet(item.name, viewLabels, solid, [false, false, true]);
-    return [sheet, tech, views];
+    const heroStill = cupStills({ ...stillSpec, studio: true, look: "hero", shadow: true }, [0], 1400, 1800)[0];
+    const share = shareUrl({
+      cupId: item.id,
+      process: itemProcess,
+      cover360: Boolean(side === "beer" ? cover360 : otherCover360),
+      body: body ?? null,
+      liquid: (side === "beer" ? liquid : rightLiquid) ?? "none",
+      place: itemPlace,
+    });
+    const qr = await qrCanvas(share, 512);
+    const hero = heroSheet({
+      cupName: item.name,
+      process: itemArea.full ? "Quadricromia IML · cobertura total 360°" : itemProcess === "iml" ? "Quadricromia IML" : itemProcess === "serigrafia" ? "Serigrafia" : "Digital",
+      still: heroStill,
+      shareUrl: share,
+      qr,
+    });
+    return [sheet, tech, views, hero];
   }
 
   async function saveCard(side: "beer" | "soda") {
@@ -681,7 +714,7 @@ export function BlinkApp() {
             const window = areaFor(item, processesFor(item).includes(process) ? process : processesFor(item)[0]);
             const shownArea = isCup1 ? area : isCup2 ? otherArea : window;
             const rawTexture = isCup1 && chosen ? chosen : isCup2 && rightShown ? rightShown : null;
-            const showTexture = rawTexture && shownArea ? wrapPrint(rawTexture, isCup1 ? pattern : rightPattern, 0.9, { cup: item, area: shownArea, ppm: 4 }) : rawTexture;
+            const showTexture = rawTexture && shownArea ? wrapPrint(rawTexture, isCup1 ? pattern : rightPattern, 0.9, { cup: item, area: shownArea, ppm: 4, place: isCup1 ? place : rightPlace }) : rawTexture;
             const showBody = isCup1 ? cupTint : isCup2 ? right.cupTint : null;
             return (
               <li key={item.id}>
@@ -738,7 +771,7 @@ export function BlinkApp() {
                           className={`w-full rounded-3xl border bg-card px-1 pb-3 pt-1 text-left ${on ? "border-ink" : "border-line"}`}
                         >
                           <CupView
-                            texture={(area && texture ? wrapPrint(texture, pattern, 0.9, { cup, area, ppm: 4 }) : texture) ?? null}
+                            texture={(area && texture ? wrapPrint(texture, pattern, 0.9, { cup, area, ppm: 4, place }) : texture) ?? null}
                             body={cupTint}
                             top={cup.top}
                             bot={cup.bot}
@@ -770,7 +803,7 @@ export function BlinkApp() {
                           className={`w-full rounded-3xl border bg-card px-1 pb-3 pt-1 text-left ${on ? "border-ink" : "border-line"}`}
                         >
                           <CupView
-                            texture={otherArea && texture ? wrapPrint(texture, rightPattern, 0.9, { cup: other, area: otherArea, ppm: 4 }) : texture}
+                            texture={otherArea && texture ? wrapPrint(texture, rightPattern, 0.9, { cup: other, area: otherArea, ppm: 4, place: rightPlace }) : texture}
                             body={right.cupTint}
                             top={other.top}
                             bot={other.bot}
@@ -797,11 +830,11 @@ export function BlinkApp() {
           {area ? (
             <section className="overflow-hidden rounded-3xl border border-line bg-card">
             <div>
-              <div className="grid grid-cols-2 items-stretch gap-2 bg-white px-2 pb-3">
-                <div className="relative h-64 overflow-hidden rounded-2xl border border-line bg-white" onDoubleClick={() => setSoloCard("beer")}>
+              <div className="grid grid-cols-2 items-stretch gap-2 bg-paper px-2 pb-3">
+                <div className="relative h-64 overflow-hidden rounded-2xl border border-line bg-paper" onDoubleClick={() => setSoloCard("beer")}>
                   <CupView
                     key={`cup1-${chosenId}-${cupTint}-${liquid}`}
-                    texture={(area ? wrapPrint(shown, pattern, pattern ? 0.9 : 0.6, { cup, area }) : wrapPrint(shown, pattern, pattern ? 0.9 : 0.6)) ?? shown}
+                    texture={(area ? wrapPrint(shown, pattern, pattern ? 0.9 : 0.6, { cup, area, place }) : wrapPrint(shown, pattern, pattern ? 0.9 : 0.6)) ?? shown}
                     area={area}
                     top={cup.top}
                     bot={cup.bot}
@@ -810,14 +843,17 @@ export function BlinkApp() {
                     body={cupTint}
                     liquid={liquid}
                     spin={Boolean(art || pattern) && spin}
+                    studio
+                    place={place}
+                    onPlace={setPlace}
                     className="absolute inset-0 h-full w-full"
                   />
                   <span className="absolute bottom-2 left-2 rounded bg-white/80 px-2 py-0.5 text-xs text-ink">{t.cup1}</span>
                 </div>
-                <div className="relative h-64 overflow-hidden rounded-2xl border border-line bg-white" onDoubleClick={() => setSoloCard("soda")}>
+                <div className="relative h-64 overflow-hidden rounded-2xl border border-line bg-paper" onDoubleClick={() => setSoloCard("soda")}>
                   <CupView
                     key={`cup2-${right.sample}-${right.cupTint}-${rightLiquid}`}
-                    texture={(otherArea ? wrapPrint(otherTexture, rightPattern, rightPattern ? 0.9 : 0.6, { cup: other, area: otherArea }) : wrapPrint(otherTexture, rightPattern, rightPattern ? 0.9 : 0.6)) ?? otherTexture}
+                    texture={(otherArea ? wrapPrint(otherTexture, rightPattern, rightPattern ? 0.9 : 0.6, { cup: other, area: otherArea, place: rightPlace }) : wrapPrint(otherTexture, rightPattern, rightPattern ? 0.9 : 0.6)) ?? otherTexture}
                     area={otherArea}
                     top={other.top}
                     bot={other.bot}
@@ -826,6 +862,9 @@ export function BlinkApp() {
                     body={right.cupTint}
                     liquid={rightLiquid}
                     spin={Boolean(rightArt || rightPattern) && spin}
+                    studio
+                    place={rightPlace}
+                    onPlace={setRightPlace}
                     className="absolute inset-0 h-full w-full"
                   />
                   <span className="absolute bottom-2 left-2 rounded bg-white/80 px-2 py-0.5 text-xs text-ink">{t.cup2}</span>
@@ -1014,8 +1053,8 @@ export function BlinkApp() {
                   </button>
                 ) : null}
               </div>
-              {chosen ? <WindowPlate {...unrolledPlate(chosen, pattern, cup, area)} process={process} caption={t} cupColor={cupTint} /> : null}
-              {rightShown && otherArea ? <WindowPlate {...unrolledPlate(rightShown, rightPattern, other, otherArea)} process={otherProcess} caption={t} cupColor={right.cupTint} /> : null}
+              {chosen ? <WindowPlate {...unrolledPlate(chosen, pattern, cup, area, place)} process={process} caption={t} cupColor={cupTint} /> : null}
+              {rightShown && otherArea ? <WindowPlate {...unrolledPlate(rightShown, rightPattern, other, otherArea, rightPlace)} process={otherProcess} caption={t} cupColor={right.cupTint} /> : null}
             </div>
             </section>
           ) : null}
@@ -1155,7 +1194,7 @@ export function BlinkApp() {
               <p className="text-xs text-muted">Material em detalhe. Clica fora ou em Fechar para voltar.</p>
               <div className="mt-4 h-[60vh] rounded-2xl bg-white">
                 <CupView
-                  texture={win && item.id === cup.id ? wrapPrint(shown, pattern, pattern ? 0.9 : 0.6, { cup: item, area: win }) ?? shown : win && item.id === compareId ? wrapPrint(otherTexture, rightPattern, rightPattern ? 0.9 : 0.6, { cup: item, area: win }) ?? otherTexture : null}
+                  texture={win && item.id === cup.id ? wrapPrint(shown, pattern, pattern ? 0.9 : 0.6, { cup: item, area: win, place }) ?? shown : win && item.id === compareId ? wrapPrint(otherTexture, rightPattern, rightPattern ? 0.9 : 0.6, { cup: item, area: win, place: rightPlace }) ?? otherTexture : null}
                   area={win}
                   body={item.id === cup.id ? cupTint : item.id === compareId ? right.cupTint : null}
                   top={item.top}
@@ -1222,7 +1261,7 @@ export function BlinkApp() {
         const itemLiquid = isBeer ? liquid : rightLiquid;
         const itemPattern = isBeer ? pattern : rightPattern;
         const itemArea = isBeer ? area : otherArea;
-        const itemPrint = (itemArea ? wrapPrint(itemTexture, itemPattern, itemPattern ? 0.9 : 0.6, { cup: item, area: itemArea }) : wrapPrint(itemTexture, itemPattern, itemPattern ? 0.9 : 0.6)) ?? itemTexture;
+        const itemPrint = (itemArea ? wrapPrint(itemTexture, itemPattern, itemPattern ? 0.9 : 0.6, { cup: item, area: itemArea, place: item.id === cup.id ? place : rightPlace }) : wrapPrint(itemTexture, itemPattern, itemPattern ? 0.9 : 0.6)) ?? itemTexture;
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setSoloCard(null)}>
             <div className="relative max-h-[90vh] w-full max-w-md overflow-y-auto rounded-3xl bg-white p-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
@@ -1231,7 +1270,7 @@ export function BlinkApp() {
                 {item.measured ? `${item.height} × boca ${item.top} × base ${item.bot} mm` : ""}
               </p>
               <p className="text-xs text-muted">Toca para pausar, solta para continuar</p>
-              <div className="relative mt-3 h-80 rounded-2xl bg-white">
+              <div className="relative mt-3 h-80 rounded-2xl bg-paper">
                 <CupView
                   texture={itemPrint}
                   area={itemArea}
@@ -1242,6 +1281,9 @@ export function BlinkApp() {
                   body={itemTint}
                   liquid={itemLiquid}
                   spin={true}
+                  studio
+                  place={isBeer ? place : rightPlace}
+                  onPlace={isBeer ? setPlace : setRightPlace}
                   className="absolute inset-0 h-full w-full"
                 />
               </div>
@@ -1361,8 +1403,8 @@ function cachedLabels(parts: (object | null)[], key: string, build: () => Record
 }
 
 /** The print window as it is printed (same copies and sizes as on the 3D cup), with its real size in mm. */
-function unrolledPlate(label: HTMLCanvasElement, motif: HTMLCanvasElement | null, cup: Cup, area: Area): { canvas: HTMLCanvasElement; area: Area } {
-  const canvas = wrapPrint(label, motif, 0.9, { cup, area, ppm: 6 });
+function unrolledPlate(label: HTMLCanvasElement, motif: HTMLCanvasElement | null, cup: Cup, area: Area, place: ArtPlace = ART_PLACE0): { canvas: HTMLCanvasElement; area: Area } {
+  const canvas = wrapPrint(label, motif, 0.9, { cup, area, ppm: 6, place });
   const meta = printMetaOf(canvas);
   if (!canvas || !meta) return { canvas: label, area };
   return { canvas, area: { ...area, w: Math.round(meta.widthMm * 10) / 10, h: Math.round(meta.bandH * 10) / 10 } };

@@ -22,6 +22,10 @@ export type CupScene = {
   time?: number;
   /** Contact shadow on the table (off for the upside-down still, where it would float above the cup). */
   shadow?: boolean;
+  /** Blink paper studio wash behind the cup (off for factory stills that must crop to the outline). */
+  studio?: boolean;
+  /** Wider frame and more floor for the sales still in the PDF. */
+  look?: "cup" | "hero";
   area?: { w: number; h: number; rim?: number; full?: boolean } | null;
 };
 
@@ -59,8 +63,31 @@ uniform float uLevel;
 uniform float uFoamTop;
 uniform float uTime;
 uniform float uShadow;
+uniform float uStudio;
 
 const float PI = 3.14159265;
+
+// Blink studio lights: a warm key (paper / ipê) from the upper left, a soft
+// rim from the back right, and a gentle fill. Matte polypropylene, not gloss.
+vec3 blinkLight(vec3 albedo, vec3 N, vec3 V) {
+  vec3 Lkey = normalize(vec3(-0.40, 0.78, 0.50));
+  vec3 Lrim = normalize(vec3(0.62, 0.28, -0.70));
+  vec3 Lfill = normalize(vec3(0.08, 0.22, 0.97));
+  float dKey = max(0.0, dot(N, Lkey));
+  float dRim = pow(max(0.0, dot(N, Lrim)), 1.35);
+  float dFill = max(0.0, dot(N, Lfill));
+  // Shade around a high base so white PP stays light, not grey, while still
+  // showing a warm key from the upper left and a soft rim from the back right.
+  float shade = 0.82 + 0.26 * dKey + 0.10 * dFill;
+  vec3 lit = albedo * shade;
+  lit += albedo * vec3(1.0, 0.93, 0.82) * (0.10 * dRim);
+  vec3 Hk = normalize(Lkey + V);
+  vec3 Hr = normalize(Lrim + V);
+  float spec = pow(max(0.0, dot(N, Hk)), 52.0) * 0.08 + pow(max(0.0, dot(N, Hr)), 28.0) * 0.04;
+  lit += vec3(1.0, 0.96, 0.90) * spec;
+  return lit;
+}
+
 
 vec4 over(vec4 top, vec4 bot) { return top + bot * (1.0 - top.a); }
 
@@ -118,25 +145,30 @@ vec3 drinkColor(float L, float xs, float r, float y, float lev, vec2 a, float fw
   vec3 c;
   if (beer) {
     float ax = abs(xs);
-    float Le = L + 0.7 * r * ax * ax * sqrt(ax) + 0.42 * max(0.0, lev - y);
-    c = vec3(1.0, 0.985, 0.95) * exp(-vec3(0.0020, 0.0070, 0.022) * Le);
+    // Thin path at the edges stays golden; the core and the foot go a deeper amber, not brown stout.
+    float Le = L + 0.75 * r * ax * ax * sqrt(ax) + 0.42 * max(0.0, lev - y);
+    c = vec3(1.0, 0.97, 0.80) * exp(-vec3(0.0022, 0.0082, 0.027) * Le);
+    c = mix(c, vec3(0.72, 0.38, 0.08), smoothstep(32.0, 75.0, Le) * 0.28);
     c *= mix(0.74, 1.0, smoothstep(3.0, 16.0, y));
-    c += vec3(0.07, 0.045, 0.0) * smoothstep(lev - 16.0, lev, y);
-    c += vec3(0.10, 0.07, 0.02) * exp(-pow((xs + 0.5) / 0.13, 2.0));
-    float b = risingBubbles(a, uTime, 0.28, 0.28, fw) * detail;
-    c += b * vec3(0.26, 0.22, 0.14);
-    c = mix(c, vec3(0.93, 0.79, 0.45), 0.35 * smoothstep(lev - 3.0, lev, y));
+    c += vec3(0.08, 0.05, 0.0) * smoothstep(lev - 16.0, lev, y);
+    // Warm key glint on the liquid, same side as the studio light.
+    c += vec3(0.14, 0.09, 0.025) * exp(-pow((xs + 0.48) / 0.13, 2.0));
+    float b = risingBubbles(a, uTime, 0.34, 0.22, fw) * detail;
+    c += b * vec3(0.32, 0.26, 0.14);
+    c = mix(c, vec3(0.96, 0.80, 0.42), 0.38 * smoothstep(lev - 3.5, lev, y));
   } else {
-    float Le = L * 0.6 + 0.25 * max(0.0, lev - y);
-    c = mix(vec3(0.46, 0.15, 0.065), vec3(0.075, 0.03, 0.018), smoothstep(4.0, 30.0, Le));
-    c += vec3(0.20, 0.06, 0.025) * pow(abs(xs), 3.0);
-    c += vec3(0.12, 0.04, 0.02) * exp(-pow((xs + 0.5) / 0.12, 2.0));
-    c *= mix(0.8, 1.0, smoothstep(3.0, 14.0, y));
+    // Cola: almost black in the core, red-brown glints only where the wall is thin.
+    float Le = L * 0.85 + 0.35 * max(0.0, lev - y);
+    c = mix(vec3(0.16, 0.04, 0.02), vec3(0.035, 0.012, 0.01), smoothstep(3.0, 22.0, Le));
+    float edgeGlow = pow(abs(xs), 2.4);
+    c += vec3(0.38, 0.05, 0.03) * edgeGlow * (1.0 - smoothstep(16.0, 40.0, Le));
+    c += vec3(0.22, 0.05, 0.025) * exp(-pow((xs + 0.48) / 0.11, 2.0));
+    c *= mix(0.78, 1.0, smoothstep(3.0, 14.0, y));
     float hl;
-    float s = dots(a + vec2(5.0, 1.0), 3.4, 0.25, 0.2, 0.42, fw, hl) * detail;
-    c = mix(c, c * 1.8 + vec3(0.05, 0.03, 0.02), s * 0.6) + hl * 0.28 * detail;
-    float b = risingBubbles(a + vec2(1.3, 0.0), uTime * 1.3, 0.22, 0.3, fw) * detail;
-    c += b * vec3(0.28, 0.17, 0.12);
+    float s = dots(a + vec2(5.0, 1.0), 3.1, 0.32, 0.16, 0.36, fw, hl) * detail;
+    c = mix(c, c * 1.7 + vec3(0.08, 0.03, 0.02), s * 0.55) + hl * vec3(0.22, 0.10, 0.07) * detail;
+    float b = risingBubbles(a + vec2(1.3, 0.0), uTime * 1.35, 0.30, 0.22, fw) * detail;
+    c += b * vec3(0.34, 0.18, 0.12);
   }
   return c;
 }
@@ -146,13 +178,14 @@ vec3 foamColor(vec2 a, float y, float lev, float ndv, float fw) {
   float detail = 1.0 - smoothstep(0.35, 0.9, fw);
   float n = vnoise(a * vec2(0.7, 0.9)) * 0.6 + vnoise(a * 2.6 + 4.0) * 0.4;
   if (LIQ == 2) {
-    vec3 f = mix(vec3(0.42, 0.26, 0.18), vec3(0.74, 0.62, 0.52), smoothstep(lev, lev + 1.6, y));
+    vec3 f = mix(vec3(0.28, 0.12, 0.08), vec3(0.78, 0.68, 0.58), smoothstep(lev, lev + 1.4, y));
     return f * (0.9 + 0.2 * mix(0.5, n, detail));
   }
-  vec3 f = vec3(0.975, 0.955, 0.895) * (0.95 + 0.05 * mix(0.5, n, detail));
-  f -= detail * 0.035 * smoothstep(0.7, 0.9, n);
-  f = mix(vec3(0.90, 0.78, 0.52), f, smoothstep(lev - 0.5, lev + 3.5, y));
-  return f * (0.95 + 0.05 * ndv);
+  // Cream head: denser, slightly warmer, with a soft amber stain at the beer line.
+  vec3 f = vec3(0.985, 0.962, 0.905) * (0.94 + 0.08 * mix(0.5, n, detail));
+  f -= detail * 0.045 * smoothstep(0.62, 0.9, n);
+  f = mix(vec3(0.86, 0.68, 0.36), f, smoothstep(lev - 0.4, lev + 4.0, y));
+  return f * (0.94 + 0.08 * ndv);
 }
 
 // The drink's top seen from above (through the mouth).
@@ -160,13 +193,15 @@ vec3 surfaceColor(vec2 sp, float rr, float fw) {
   float detail = 1.0 - smoothstep(0.35, 0.9, fw);
   if (LIQ == 1) {
     float n = vnoise(sp * 1.1) * 0.55 + vnoise(sp * 2.7 + 2.0) * 0.45;
-    vec3 f = vec3(0.98, 0.958, 0.895) * (0.93 + 0.07 * mix(0.5, n, detail));
-    f -= detail * 0.06 * smoothstep(0.68, 0.88, n);
+    vec3 f = vec3(0.988, 0.966, 0.910) * (0.92 + 0.09 * mix(0.5, n, detail));
+    f -= detail * 0.07 * smoothstep(0.66, 0.88, n);
+    // Meniscus: the foam climbs a little at the wall.
+    f = mix(f, vec3(0.99, 0.97, 0.93), smoothstep(0.78, 0.98, rr) * 0.35);
     return f * (0.9 + 0.1 * (1.0 - rr * rr));
   }
-  vec3 c = vec3(0.11, 0.045, 0.028) + vec3(0.22) * smoothstep(0.2, 1.0, rr) * 0.35;
+  vec3 c = vec3(0.05, 0.018, 0.012) + vec3(0.18, 0.05, 0.03) * smoothstep(0.2, 1.0, rr) * 0.55;
   float hl;
-  float ring = smoothstep(0.84, 0.97, rr);
+  float ring = smoothstep(0.86, 0.98, rr);
   float fz = dots(sp, 1.6, 0.5, 0.25, 0.6, fw, hl) * detail;
   c = mix(c, vec3(0.58, 0.44, 0.33), max(ring * (0.75 + 0.25 * sin(sp.x * 3.1 + sin(sp.y * 2.3))), fz * 0.6));
   return c + hl * 0.25 * detail;
@@ -183,7 +218,7 @@ vec4 interior(vec3 P, vec3 D) {
   vec3 col = vec3(c, c + 0.004, c + 0.01);
   if (uBody.a > 0.0) col = uBody.rgb * (0.62 + 0.25 * (y / uH)) * (1.0 - 0.15 * side * side);
 #ifdef DRINK
-  if (P.y < uFoamTop && P.y > 5.0) col = P.y < uLevel ? (LIQ == 1 ? vec3(0.80, 0.50, 0.12) : vec3(0.10, 0.04, 0.025)) : (LIQ == 1 ? vec3(0.95, 0.92, 0.85) : vec3(0.5, 0.38, 0.3));
+  if (P.y < uFoamTop && P.y > 5.0) col = P.y < uLevel ? (LIQ == 1 ? vec3(0.72, 0.38, 0.08) : vec3(0.06, 0.02, 0.015)) : (LIQ == 1 ? vec3(0.97, 0.94, 0.88) : vec3(0.55, 0.40, 0.32));
 #endif
   return vec4(col, 1.0);
 }
@@ -207,14 +242,26 @@ void main() {
 
   vec4 color = vec4(0.0);
 
-  // Soft contact shadow on the table.
+  // Blink paper studio, only when asked: factory stills stay transparent so the
+  // three-view page can crop to the cup. The wash is the house paper, not a white cyclorama.
+  if (uStudio > 0.5) {
+    vec2 uv = pix / uRes;
+    vec3 paper = mix(vec3(0.965, 0.941, 0.902), vec3(0.905, 0.870, 0.812), smoothstep(0.42, 1.0, uv.y));
+    float vig = smoothstep(0.55, 1.2, length((uv - vec2(0.5, 0.40)) * vec2(1.15, 1.0)));
+    paper *= 1.0 - 0.07 * vig;
+    color = vec4(paper, 1.0);
+  }
+
+  // Soft contact shadow on the table (warm, tight under the foot). Off when the cup is inverted.
   float tg = -O.y / D.y;
   if (tg > 0.0) {
     vec3 G = O + tg * D;
-    float rr = length(vec2(G.x * 0.92, G.z - uRb * 0.12));
-    float sh = 0.13 * uShadow * (1.0 - smoothstep(uRb * 0.70, uRb * 1.32, rr));
-    vec3 shc = LIQ == 1 && uBody.a == 0.0 ? vec3(0.50, 0.43, 0.30) : vec3(0.42, 0.44, 0.46);
-    color = vec4(shc * sh, sh);
+    float rr = length(vec2(G.x * 0.95, G.z - uRb * 0.08));
+    float sh = 0.20 * uShadow * (1.0 - smoothstep(uRb * 0.62, uRb * 1.55, rr));
+    sh *= 0.55 + 0.45 * (1.0 - smoothstep(uRb * 0.15, uRb * 0.85, rr));
+    vec3 shc = vec3(0.36, 0.30, 0.24);
+    if (uStudio > 0.5) color.rgb *= (1.0 - sh);
+    else color = vec4(shc * sh, sh);
   }
 
   // Mouth: top plane of the rim.
@@ -271,11 +318,12 @@ void main() {
     float edge = 1.0 - ndv;
     float xs = clamp(dot(P1.xz, vec2(1.0, 0.0)) / r, -1.0, 1.0);
 
-    // Frosted polypropylene: bright centre, soft grey falloff, thin bright edge.
-    float fc = 0.925 - 0.13 * smoothstep(0.22, 0.9, edge) + 0.06 * smoothstep(0.9, 0.995, edge);
-    fc += 0.028 * exp(-pow((xs + 0.46) / 0.11, 2.0)) + 0.014 * exp(-pow((xs - 0.62) / 0.07, 2.0));
-    fc -= 0.018 * (1.0 - y / uH);
-    vec3 frostC = vec3(fc, fc + 0.003, fc + 0.008);
+    // Frosted polypropylene: matte, slightly warm, with thickness at the limb.
+    float fc = 0.925 - 0.12 * smoothstep(0.22, 0.9, edge) + 0.055 * smoothstep(0.9, 0.995, edge);
+    fc += 0.024 * exp(-pow((xs + 0.46) / 0.11, 2.0)) + 0.013 * exp(-pow((xs - 0.62) / 0.07, 2.0));
+    fc -= 0.016 * (1.0 - y / uH);
+    vec3 frostA0 = vec3(fc + 0.01, fc + 0.006, fc);
+    vec3 frostC = blinkLight(frostA0, N, V);
     // Rim lip (about 4 mm): whiter, more translucent, with a soft shadow line under it.
     float lipBand = smoothstep(uH - 7.0, uH - 1.5, y);
     frostC = mix(frostC, vec3(0.95, 0.953, 0.957) + 0.015 * pow(ndv, 2.0), lipBand * 0.25);
@@ -295,7 +343,9 @@ void main() {
     float fwL = max(fwY, 1e-3);
     if (disc > 0.0) {
       float lev = uLevel + (LIQ == 1 ? 0.55 * sin(aL.x * 0.23 + 1.3) + 0.35 * sin(aL.x * 0.61 + 0.4) : 0.0);
-      float topF = uFoamTop + (LIQ == 1 ? 0.7 + 0.5 * sin(aL.x * 0.31 + 2.0) + 0.3 * sin(aL.x * 0.83) + 0.6 * abs(xs * xs * xs) : 0.3 + 0.3 * sin(aL.x * 0.5));
+      // Meniscus: the foam (and the thin cola ring) climbs the wall at the edges.
+      float meniscus = 1.15 * abs(xs * xs * xs) + 0.35 * edge * edge;
+      float topF = uFoamTop + (LIQ == 1 ? 0.7 + 0.5 * sin(aL.x * 0.31 + 2.0) + 0.3 * sin(aL.x * 0.83) + meniscus : 0.25 + 0.25 * sin(aL.x * 0.5) + 0.7 * meniscus);
       float soft = max(fwL, 0.35);
       if (P1.y < topF + soft) {
         float L = max(0.0, (P2.y >= 0.0 ? t2 : (-O.y / D.y)) - t1);
@@ -320,12 +370,10 @@ void main() {
     // A coloured cup is moulded in coloured polypropylene: the colour runs from the rim down
     // through the thick foot, with the foot a little deeper and a soft step where it starts.
     if (uBody.a > 0.0) {
-      float litB = 0.875 + 0.10 * pow(ndv, 0.6) - 0.07 * smoothstep(0.5, 0.95, edge);
-      vec3 bodyRgb = uBody.rgb * litB;
+      vec3 bodyRgb = blinkLight(uBody.rgb, N, V);
       bodyRgb *= mix(0.82, 1.0, smoothstep(0.4, 4.6, y));
-      bodyRgb += uBody.rgb * 0.07 * exp(-pow((y - 4.9) / 0.35, 2.0));
+      bodyRgb += uBody.rgb * 0.06 * exp(-pow((y - 4.9) / 0.35, 2.0));
       bodyRgb *= 1.0 - 0.10 * exp(-pow(y / 0.45, 2.0));
-      bodyRgb += 0.055 * exp(-pow((xs + 0.46) / 0.12, 2.0));
       bodyRgb += 0.035 * exp(-pow((y - (uH - 0.9)) / 0.6, 2.0));
       if (wet > 0.0) bodyRgb *= LIQ == 1 ? 0.97 : 0.94;
       wall = vec4(bodyRgb, 1.0);
@@ -357,8 +405,7 @@ void main() {
         printA = tex.a * win;
         ink = over(tex, ink);
       }
-      float lit = 0.875 + 0.10 * pow(ndv, 0.6) - 0.07 * smoothstep(0.5, 0.95, edge);
-      vec3 rgb = ink.rgb * lit + ink.a * (0.055 * exp(-pow((xs + 0.46) / 0.12, 2.0)));
+      vec3 rgb = blinkLight(ink.rgb, N, V);
       ink = vec4(rgb, ink.a) * win;
       wall = over(ink, wall);
     }
@@ -366,9 +413,9 @@ void main() {
     // Cold drink: fine condensation on the outside; the printed art stays crisp on top.
     if (wet > 0.0) {
       float hl;
-      float dm = dots(aL * vec2(1.0, 1.15), 2.3, 0.55, 0.22, 0.75, fwL, hl);
-      dm *= (1.0 - smoothstep(0.6, 0.95, edge)) * (1.0 - printA) * wet;
-      wall.rgb = mix(wall.rgb, wall.rgb * 0.9, dm * 0.45) + hl * 0.16 * wall.a * (1.0 - printA) * wet;
+      float dm = dots(aL * vec2(1.0, 1.15), 2.15, 0.62, 0.20, 0.85, fwL, hl);
+      dm *= (1.0 - smoothstep(0.55, 0.95, edge)) * (1.0 - printA) * wet;
+      wall.rgb = mix(wall.rgb, wall.rgb * 0.88, dm * 0.50) + hl * 0.22 * wall.a * (1.0 - printA) * wet;
     }
 #endif
     color = mix(color, wall, front);
@@ -404,7 +451,7 @@ const textures = new WeakMap<HTMLCanvasElement, WebGLTexture>();
 const recent: HTMLCanvasElement[] = [];
 const MAX_TEXTURES = 28;
 
-const UNIFORMS = ["uRes", "uO", "uS", "uCam", "uRight", "uUp", "uFwd", "uRt", "uRb", "uH", "uTurn", "uTex", "uHasTex", "uBand0", "uBandH", "uSpan", "uStart", "uFull", "uBody", "uLevel", "uFoamTop", "uTime", "uShadow"];
+const UNIFORMS = ["uRes", "uO", "uS", "uCam", "uRight", "uUp", "uFwd", "uRt", "uRb", "uH", "uTurn", "uTex", "uHasTex", "uBand0", "uBandH", "uSpan", "uStart", "uFull", "uBody", "uLevel", "uFoamTop", "uTime", "uShadow", "uStudio"];
 
 function buildProgram(gl: WebGL2RenderingContext, liquid: number): Prog {
   const compile = (type: number, src: string) => {
@@ -601,9 +648,10 @@ export function renderCupGL(ctx: CanvasRenderingContext2D, w: number, h: number,
       maxY = Math.max(maxY, yy);
     }
   }
-  const s = Math.min((W * 0.62) / (maxX - minX), (Hh * 0.88) / (maxY - minY));
+  const hero = scene.look === "hero";
+  const s = Math.min((W * (hero ? 0.52 : 0.62)) / (maxX - minX), (Hh * (hero ? 0.74 : 0.88)) / (maxY - minY));
   const ox = W / 2 - s * (minX + maxX) / 2;
-  const oy = Hh * 0.47 + s * (minY + maxY) / 2;
+  const oy = Hh * (hero ? 0.44 : 0.47) + s * (minY + maxY) / 2;
 
   const meta = scene.texture ? printMetaOf(scene.texture) : null;
   const { band0, bandH } = bandFor(scene, meta);
@@ -654,6 +702,7 @@ export function renderCupGL(ctx: CanvasRenderingContext2D, w: number, h: number,
   gl.uniform1f(loc.uFoamTop, fill.foamTop);
   gl.uniform1f(loc.uTime, scene.time ?? 4.2);
   gl.uniform1f(loc.uShadow, scene.shadow === false ? 0 : 1);
+  gl.uniform1f(loc.uStudio, scene.studio ? 1 : 0);
   gl.activeTexture(gl.TEXTURE0);
   let hasTex = 0;
   if (scene.texture && scene.texture.width > 1 && scene.texture.height > 1) {

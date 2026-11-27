@@ -96,7 +96,7 @@ const copy = {
     leftOut: "Quantidade 0. Este copo não entra na ficha.",
     andSvg: "e SVG",
     estimate: "O prazo é estimativa de estúdio. O euro usa o câmbio indicativo de",
-    viewHint: "Carrega no modelo para criar e abrir o PDF dos ângulos.",
+    viewHint: "Carrega no modelo para criar e abrir o PDF dos ângulos. No copo, arrasta para rodar; mantém premido o logótipo para o deslocar, dois dedos para o tamanho.",
     render: { frost: "Fosco", clear: "Translúcido", studio: "Estúdio" },
     renderNote: {
       frost: "Parede oca de polipropileno. A luz atravessa e o corpo fica leitoso.",
@@ -208,7 +208,7 @@ const copy = {
     leftOut: "Quantité 0. Ce gobelet n'entre pas dans la fiche.",
     andSvg: "et le SVG",
     estimate: "Le délai est une estimation d'atelier. L'euro utilise le change indicatif de",
-    viewHint: "Touche le modèle pour créer et ouvrir le PDF des angles.",
+    viewHint: "Touche le modèle pour créer et ouvrir le PDF des angles. Sur le gobelet, fais glisser pour tourner ; reste appuyé sur le logo pour le déplacer, deux doigts pour la taille.",
     render: { frost: "Givré", clear: "Transparent", studio: "Studio" },
     renderNote: {
       frost: "Paroi creuse en polypropylène. La lumière traverse et le corps reste laiteux.",
@@ -320,7 +320,7 @@ const copy = {
     leftOut: "Quantity 0. This cup stays off the sheet.",
     andSvg: "and SVG",
     estimate: "The lead time is a studio estimate. The euro uses an indicative rate of",
-    viewHint: "Tap the model to create and open the angle PDF.",
+    viewHint: "Tap the model to create and open the angle PDF. On the cup, drag to turn; hold the logo to move it, pinch to size it.",
     render: { frost: "Frosted", clear: "Clear", studio: "Studio" },
     renderNote: {
       frost: "Hollow polypropylene wall. Light passes through and the body stays milky.",

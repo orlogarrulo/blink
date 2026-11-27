@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { ART_PLACE0, clampArtPlace, type ArtPlace } from "@/lib/art-place";
 import { drinkLevels, renderCupGL } from "@/lib/cup-gl";
 
 type Props = {
@@ -14,6 +15,11 @@ type Props = {
   spin: boolean;
   /** Fixed view angle in radians when not spinning (0 = front). */
   turn?: number;
+  studio?: boolean;
+  look?: "cup" | "hero";
+  shadow?: boolean;
+  place?: ArtPlace;
+  onPlace?: (place: ArtPlace) => void;
   className?: string;
   label?: string;
 };
@@ -26,15 +32,22 @@ function pixelRatio() {
   return dpr * pinch;
 }
 
-export function CupView({ texture, top, bot, heightMm, cover, area = null, body = null, liquid = "none", spin, turn = 0, className, label }: Props) {
+export function CupView({ texture, top, bot, heightMm, cover, area = null, body = null, liquid = "none", spin, turn = 0, studio = false, look = "cup", shadow, place, onPlace, className, label }: Props) {
   const ref = useRef<HTMLCanvasElement>(null);
   const angle = useRef(turn);
-  const drag = useRef<{ x: number; a: number } | null>(null);
+  const drag = useRef<{ x: number; y: number; a: number; yaw: number; lift: number; scale: number; art: boolean; moved: boolean } | null>(null);
+  const hold = useRef<number | null>(null);
+  const pinch = useRef<{ dist: number; scale: number } | null>(null);
+  const pointers = useRef(new Map<number, { x: number; y: number }>());
   const paused = useRef(false);
   const visible = useRef(true);
   const dirty = useRef(true);
-  const live = useRef({ texture, top, bot, heightMm, cover, area, body, liquid, spin });
-  live.current = { texture, top, bot, heightMm, cover, area, body, liquid, spin };
+  const placeRef = useRef(place ?? ART_PLACE0);
+  placeRef.current = place ?? ART_PLACE0;
+  const onPlaceRef = useRef(onPlace);
+  onPlaceRef.current = onPlace;
+  const live = useRef({ texture, top, bot, heightMm, cover, area, body, liquid, spin, studio, look, shadow });
+  live.current = { texture, top, bot, heightMm, cover, area, body, liquid, spin, studio, look, shadow };
 
   useEffect(() => {
     if (!spin) angle.current = turn;
@@ -84,7 +97,7 @@ export function CupView({ texture, top, bot, heightMm, cover, area = null, body 
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, bw, bh);
       const scene = spec.liquid && spec.liquid !== "none" && spec.spin && !reduce ? { ...spec, time: now() / 1000 } : spec;
-      const ok = renderCupGL(ctx, bw, bh, scene, angle.current);
+      const ok = renderCupGL(ctx, bw, bh, { ...scene, studio: spec.studio, look: spec.look, shadow: spec.shadow }, angle.current);
       if (!ok) {
         ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
         drawCup2d(ctx, width, height, spec, angle.current);
@@ -132,13 +145,20 @@ export function CupView({ texture, top, bot, heightMm, cover, area = null, body 
       window.visualViewport?.removeEventListener("resize", mark);
       window.removeEventListener("resize", mark);
     };
-  }, [texture, top, bot, heightMm, cover, area?.w, area?.h, body, liquid, spin]);
+  }, [texture, top, bot, heightMm, cover, area?.w, area?.h, body, liquid, spin, studio, look, shadow]);
+
+  const clearHold = () => {
+    if (hold.current !== null) {
+      window.clearTimeout(hold.current);
+      hold.current = null;
+    }
+  };
 
   return (
     <canvas
       ref={ref}
       className={className ?? "h-80 w-full touch-none lg:h-[32rem]"}
-      aria-label={label ?? "Copo Ecocup. Arrasta para rodar."}
+      aria-label={label ?? (onPlace ? "Copo Ecocup. Arrasta para rodar. Mantém premido o logótipo para o deslocar; dois dedos para o tamanho." : "Copo Ecocup. Arrasta para rodar.")}
       onMouseEnter={() => {
         paused.current = true;
       }}
@@ -146,19 +166,68 @@ export function CupView({ texture, top, bot, heightMm, cover, area = null, body 
         paused.current = false;
       }}
       onPointerDown={(event) => {
-        if (!spin) return;
-        drag.current = { x: event.clientX, a: angle.current };
+        if (!spin && !onPlace) return;
         event.currentTarget.setPointerCapture(event.pointerId);
+        pointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+        if (pointers.current.size >= 2 && onPlace) {
+          clearHold();
+          const pts = [...pointers.current.values()];
+          const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+          pinch.current = { dist: Math.max(8, dist), scale: placeRef.current.scale };
+          drag.current = null;
+          return;
+        }
+        if (!spin && !onPlace) return;
+        const start = { x: event.clientX, y: event.clientY, a: angle.current, yaw: placeRef.current.yaw, lift: placeRef.current.lift, scale: placeRef.current.scale, art: false, moved: false };
+        drag.current = start;
+        clearHold();
+        if (onPlace) {
+          hold.current = window.setTimeout(() => {
+            if (drag.current && !drag.current.moved) drag.current.art = true;
+          }, 420);
+        }
       }}
       onPointerMove={(event) => {
+        if (pointers.current.has(event.pointerId)) pointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+        if (pinch.current && onPlaceRef.current && pointers.current.size >= 2) {
+          const pts = [...pointers.current.values()];
+          const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+          const next = clampArtPlace({ ...placeRef.current, scale: pinch.current.scale * (dist / pinch.current.dist) }, live.current.area?.h ?? live.current.heightMm * 0.8, (live.current.area?.h ?? 80) * 0.5);
+          onPlaceRef.current(next);
+          return;
+        }
         if (!drag.current) return;
+        const moved = Math.hypot(event.clientX - drag.current.x, event.clientY - drag.current.y);
+        if (moved > 8) {
+          drag.current.moved = true;
+          if (!drag.current.art) clearHold();
+        }
+        if (drag.current.art && onPlaceRef.current) {
+          const canvas = ref.current;
+          const mm = live.current.heightMm / Math.max(1, canvas?.clientHeight ?? 1);
+          onPlaceRef.current(clampArtPlace({
+            yaw: drag.current.yaw + (event.clientX - drag.current.x) * 0.008,
+            lift: drag.current.lift - (event.clientY - drag.current.y) * mm,
+            scale: drag.current.scale,
+          }, live.current.area?.h ?? live.current.heightMm * 0.8, (live.current.area?.h ?? 80) * 0.5));
+          return;
+        }
+        if (!spin) return;
         angle.current = drag.current.a + (event.clientX - drag.current.x) * 0.012;
         dirty.current = true;
       }}
-      onPointerUp={() => {
-        drag.current = null;
+      onPointerUp={(event) => {
+        pointers.current.delete(event.pointerId);
+        if (pointers.current.size < 2) pinch.current = null;
+        if (pointers.current.size === 0) {
+          clearHold();
+          drag.current = null;
+        }
       }}
-      onPointerCancel={() => {
+      onPointerCancel={(event) => {
+        pointers.current.delete(event.pointerId);
+        pinch.current = null;
+        clearHold();
         drag.current = null;
       }}
     />
@@ -175,6 +244,8 @@ type CupDraw = {
   body?: string | null;
   liquid?: "none" | "beer" | "soda";
   shadow?: boolean;
+  studio?: boolean;
+  look?: "cup" | "hero";
 };
 
 function drawCup2d(
@@ -205,10 +276,20 @@ function drawCup2d(
       const band0 = 0;
       const band1 = 1;
 
-      ctx.fillStyle = "rgba(176, 184, 190, 0.2)";
-      ctx.beginPath();
-      ctx.ellipse(cx, topCy + bodyH + ry * 0.35, botR * 0.95, Math.max(3, topR * 0.07), 0, 0, Math.PI * 2);
-      ctx.fill();
+      if (spec.studio) {
+        const sky = ctx.createLinearGradient(0, 0, 0, height);
+        sky.addColorStop(0, "#F8F3EB");
+        sky.addColorStop(0.55, "#F6F0E6");
+        sky.addColorStop(1, "#E8DFD2");
+        ctx.fillStyle = sky;
+        ctx.fillRect(0, 0, width, height);
+      }
+      if (spec.shadow !== false) {
+        ctx.fillStyle = spec.studio ? "rgba(72, 58, 44, 0.18)" : "rgba(90, 72, 54, 0.2)";
+        ctx.beginPath();
+        ctx.ellipse(cx, topCy + bodyH + ry * 0.4, botR * 1.05, Math.max(4, topR * 0.1), 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
 
       ctx.beginPath();
       ctx.moveTo(cx - topR, topCy);
@@ -285,7 +366,7 @@ function drawCup2d(
         ctx.save();
         band(2.5, fill.level);
         const across = ctx.createLinearGradient(cx - topR, 0, cx + topR, 0);
-        const stops = beer ? ["#b8691a", "#eda238", "#f7bc55", "#f0ad40", "#bf6d1c"] : ["#5c1e0c", "#2a0f07", "#1a0905", "#240d06", "#64220e"];
+        const stops = beer ? ["#8a3e0c", "#d48922", "#f0b44a", "#c56a14", "#6a2c08"] : ["#3a0c08", "#140605", "#080302", "#1a0705", "#5a140c"];
         stops.forEach((c, i) => across.addColorStop(i / (stops.length - 1), c));
         ctx.fillStyle = across;
         ctx.fill();
@@ -298,8 +379,8 @@ function drawCup2d(
         ctx.clip();
         let seed = 7;
         const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-        ctx.fillStyle = beer ? "rgba(255,240,200,0.45)" : "rgba(190,140,110,0.35)";
-        for (let i = 0; i < 70; i += 1) {
+        ctx.fillStyle = beer ? "rgba(255,236,190,0.5)" : "rgba(200,120,80,0.28)";
+        for (let i = 0; i < 90; i += 1) {
           const mm = 3 + rnd() * (fill.level - 4);
           const x = cx + (rnd() * 2 - 1) * xAt(mm) * 0.9;
           ctx.beginPath();
@@ -309,7 +390,7 @@ function drawCup2d(
         ctx.restore();
         ctx.save();
         band(fill.level, fill.foamTop, beer ? Math.max(0.6, bodyH * 0.004) : 0);
-        ctx.fillStyle = beer ? "#f5efe0" : "#8a6a58";
+        ctx.fillStyle = beer ? "#f7f1e4" : "#7a5a4a";
         ctx.fill();
         ctx.restore();
         // Frosted veil over the drink.
@@ -416,7 +497,7 @@ export function cupStills(
     canvas.height = height;
     const ctx = canvas.getContext("2d");
     if (!ctx) return canvas;
-    ctx.fillStyle = "#ffffff";
+    ctx.fillStyle = spec.studio ? "#F6F0E6" : "#ffffff";
     ctx.fillRect(0, 0, width, height);
     const layer = document.createElement("canvas");
     layer.width = width;

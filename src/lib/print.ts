@@ -1,3 +1,4 @@
+import { clampArtPlace, type ArtPlace } from "@/lib/art-place";
 import { drawBlinkWordmark } from "@/lib/brand-mark";
 import type { Area, Cup, Process } from "@/lib/catalog";
 import { printWindow, setPrintMeta, type CupShape } from "@/lib/print-meta";
@@ -961,7 +962,7 @@ function knockWhite(source: HTMLCanvasElement | null): HTMLCanvasElement | null 
   return out;
 }
 
-type WrapOptions = { cup: CupShape; area: Area; /** Pixels per mm (12 for previews, lower for thumbnails). */ ppm?: number };
+type WrapOptions = { cup: CupShape; area: Area; /** Pixels per mm (12 for previews, lower for thumbnails). */ ppm?: number; place?: ArtPlace };
 
 const wrapCache = new WeakMap<object, Map<string, HTMLCanvasElement | null>>();
 const NO_SOURCE = {};
@@ -996,8 +997,9 @@ function inkBoxOf(image: HTMLCanvasElement) {
  */
 export function wrapPrint(source: HTMLCanvasElement | null, motif: HTMLCanvasElement | null, spanCover = 0.6, options?: WrapOptions): HTMLCanvasElement | null {
   if (!source && !motif) return null;
+  const place = options?.place;
   const key = options
-    ? `${options.cup.top}/${options.cup.bot}/${options.cup.height}/${options.area.w}/${options.area.h}/${options.area.rim ?? ""}/${options.area.full ? 1 : 0}/${options.ppm ?? 12}`
+    ? `${options.cup.top}/${options.cup.bot}/${options.cup.height}/${options.area.w}/${options.area.h}/${options.area.rim ?? ""}/${options.area.full ? 1 : 0}/${options.ppm ?? 12}/${place?.yaw ?? 0}/${place?.lift ?? 0}/${place?.scale ?? 1}`
     : `legacy/${spanCover}`;
   const outer = (source ?? NO_SOURCE) as object;
   let byMotif = wrapCache.get(outer);
@@ -1190,8 +1192,9 @@ function composeMouldPrint(source: HTMLCanvasElement | null, motif: HTMLCanvasEl
   const mbox = motifLogo ? inkBoxOf(motifLogo) : null;
   const TAU = Math.PI * 2;
   const angDist = (p: number, q: number) => Math.abs(((((p - q) % TAU) + TAU + Math.PI) % TAU) - Math.PI);
-  const logoAngles = logoSource && box ? [0, Math.PI] : [];
-  const motifAngles = motifLogo && mbox ? (logoAngles.length ? [Math.PI / 2, (3 * Math.PI) / 2] : [0, Math.PI]) : [];
+  const art = clampArtPlace(options.place);
+  const logoAngles = logoSource && box ? [art.yaw, art.yaw + Math.PI] : [];
+  const motifAngles = motifLogo && mbox ? (logoAngles.length ? [art.yaw + Math.PI / 2, art.yaw + (3 * Math.PI) / 2] : [art.yaw, art.yaw + Math.PI]) : [];
   const centres = [...logoAngles, ...motifAngles].sort((p, q) => p - q);
 
   // A short window (serigrafia) leaves a seam gap. It goes between two copies (on the left
@@ -1240,7 +1243,8 @@ function composeMouldPrint(source: HTMLCanvasElement | null, motif: HTMLCanvasEl
     const dw = stamp.wMm * ppm;
     const dh = stamp.hMm * ppm;
     const pad = stamp.plate * ppm;
-    const cy = H / 2;
+    const maxLiftPx = Math.max(0, (H - dh) / 2 - 1);
+    const cy = H / 2 - Math.max(-maxLiftPx, Math.min(maxLiftPx, art.lift * ppm));
     const draw = (cx: number) => {
       if (pad > 0) {
         ctx.save();
@@ -1269,11 +1273,15 @@ function composeMouldPrint(source: HTMLCanvasElement | null, motif: HTMLCanvasEl
     const rel = Math.max(0.4, labelScales.get(source as HTMLCanvasElement) ?? 1);
     const share = (texture ? 0.4 : win.full ? 0.9 : 0.96) * rel;
     const plateK = texture ? 0.12 : 0;
-    const size = copySize(box.w, box.h, slotFor(logoAngles) / (1 + plateK * 2), win.bandH / (1 + plateK * 2), share);
+    const size0 = copySize(box.w, box.h, slotFor(logoAngles) / (1 + plateK * 2), win.bandH / (1 + plateK * 2), share);
+    const fitted = clampArtPlace(art, win.bandH, size0.h);
+    const size = { w: size0.w * fitted.scale, h: size0.h * fitted.scale };
     place({ image: logoSource, box, wMm: size.w, hMm: size.h, plate: texture ? Math.max(2, Math.min(size.w, size.h) * plateK) : 0 }, logoAngles);
   }
   if (motifLogo && mbox) {
-    const size = copySize(mbox.w, mbox.h, slotFor(motifAngles), win.bandH, win.full ? 0.9 : 0.96);
+    const size0 = copySize(mbox.w, mbox.h, slotFor(motifAngles), win.bandH, win.full ? 0.9 : 0.96);
+    const fitted = clampArtPlace(art, win.bandH, size0.h);
+    const size = { w: size0.w * fitted.scale, h: size0.h * fitted.scale };
     place({ image: motifLogo, box: mbox, wMm: size.w, hMm: size.h, plate: 0 }, motifAngles);
   }
 
@@ -1322,4 +1330,76 @@ function legacyWrap(source: HTMLCanvasElement | null, motif: HTMLCanvasElement |
     }
   }
   return wrap;
+}
+
+
+/** Sales still for the ficha: front of the cup in the Blink studio, with the house mark and a share code. */
+export function heroSheet(options: {
+  cupName: string;
+  process: string;
+  still: HTMLCanvasElement;
+  shareUrl: string;
+  qr: HTMLCanvasElement | null;
+}): HTMLCanvasElement {
+  const canvas = document.createElement("canvas");
+  canvas.width = 1648;
+  canvas.height = 2336;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return canvas;
+  const w = canvas.width;
+  const h = canvas.height;
+  const sky = ctx.createLinearGradient(0, 0, 0, h);
+  sky.addColorStop(0, "#F8F3EB");
+  sky.addColorStop(0.55, "#F6F0E6");
+  sky.addColorStop(1, "#E8DFD2");
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, w, h);
+
+  drawBlinkWordmark(ctx, 64, 48, 64, "#1A120C");
+
+  ctx.fillStyle = "#7A6A5C";
+  ctx.font = "500 22px Outfit, sans-serif";
+  ctx.fillText(`${options.cupName}  ·  ${options.process}`, 64, 148);
+
+  const still = options.still;
+  const top = 180;
+  const bottom = 1880;
+  const boxH = bottom - top;
+  const boxW = w - 80;
+  const scale = Math.min(boxW / still.width, boxH / still.height);
+  const dw = still.width * scale;
+  const dh = still.height * scale;
+  ctx.drawImage(still, (w - dw) / 2, top + (boxH - dh) / 2, dw, dh);
+
+  const qr = options.qr;
+  const qrSize = 168;
+  const qrX = 64;
+  const qrY = h - 64 - qrSize;
+  if (qr) {
+    ctx.drawImage(qr, qrX, qrY, qrSize, qrSize);
+    ctx.strokeStyle = "#E4D8C8";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(qrX - 1, qrY - 1, qrSize + 2, qrSize + 2);
+  }
+  ctx.fillStyle = "#1A120C";
+  ctx.font = "500 20px Outfit, sans-serif";
+  ctx.fillText("As três vistas deste copo", qrX + qrSize + 28, qrY + 48);
+  ctx.fillStyle = "#7A6A5C";
+  ctx.font = "400 16px Outfit, sans-serif";
+  const url = options.shareUrl;
+  const maxW = w - (qrX + qrSize + 48) - 48;
+  let shown = url;
+  if (ctx.measureText(shown).width > maxW) {
+    while (shown.length > 12 && ctx.measureText(`${shown}…`).width > maxW) shown = shown.slice(0, -1);
+    shown = `${shown}…`;
+  }
+  ctx.fillText(shown, qrX + qrSize + 28, qrY + 80);
+  ctx.fillText("A arte que carregaste fica nesta ficha; o endereço leva só o modelo, a cor e a posição.", qrX + qrSize + 28, qrY + 108);
+
+  ctx.fillStyle = "#7A6A5C";
+  ctx.font = "400 16px Outfit, sans-serif";
+  ctx.textAlign = "right";
+  ctx.fillText("© BLINK 2026", w - 64, h - 40);
+  ctx.textAlign = "left";
+  return canvas;
 }
