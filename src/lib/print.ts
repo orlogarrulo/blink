@@ -1,3 +1,4 @@
+import { drawBlinkWordmark } from "@/lib/brand-mark";
 import type { Area, Cup, Process } from "@/lib/catalog";
 import { printWindow, setPrintMeta, type CupShape } from "@/lib/print-meta";
 import { PROCESS_LABEL, freightMode, priceFor, productionDays, freightDays } from "@/lib/catalog";
@@ -518,9 +519,7 @@ export function sheetCanvas(options: {
   if (!ctx) return canvas;
   ctx.fillStyle = "#F6F0E6";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = "#1A120C";
-  ctx.font = "600 52px Fraunces, serif";
-  ctx.fillText("BLINK", 72, 110);
+  drawBlinkWordmark(ctx, 72, 48, 64, "#1A120C");
   ctx.font = "500 22px Outfit, sans-serif";
   ctx.fillStyle = "#7A6A5C";
   ctx.fillText("Ficha para a gráfica  ·  etiqueta IML / serigrafia / digital", 72, 148);
