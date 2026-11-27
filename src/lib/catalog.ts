@@ -1,6 +1,33 @@
 export type Process = "serigrafia" | "iml" | "digital";
 
-export type Area = { w: number; h: number };
+export type Area = {
+  w: number;
+  h: number;
+  /** Free band under the rim in mm (full cover only); otherwise taken from the mould ratio. */
+  rim?: number;
+  /** Print all the way round and down to the base. */
+  full?: boolean;
+};
+
+/** Rim lip left unprinted when the print covers the whole cup. */
+export const FULL_COVER_RIM_MM = 4;
+
+/** Whole-cup print: around the circumference at mid height, from the base to just under the rim. */
+const fullAreaCache = new Map<string, Area>();
+
+export function fullArea(cup: Cup): Area {
+  const cached = fullAreaCache.get(cup.id);
+  if (cached) return cached;
+  const area = computeFullArea(cup);
+  fullAreaCache.set(cup.id, area);
+  return area;
+}
+
+function computeFullArea(cup: Cup): Area {
+  const h = Math.max(10, cup.height - FULL_COVER_RIM_MM);
+  const rMid = cup.top / 2 - ((cup.top - cup.bot) / 2) * ((FULL_COVER_RIM_MM + h / 2) / cup.height);
+  return { w: Math.round(2 * Math.PI * rMid * 10) / 10, h, rim: FULL_COVER_RIM_MM, full: true };
+}
 
 export type PriceTier = { qty: number; kz: number };
 
@@ -157,8 +184,9 @@ export const CUPS: Cup[] = [
     bot: 56,
     height: 150,
     measured: true,
-    screen: { w: 195, h: 110 },
-    iml: { w: 224.9, h: 143.9 },
+    // re-uz.com/en/product/reusable-cup-45-cl-ecocup-eco50 (27/11/2026): IML 216 × 150 mm, serigrafia 190 × 118 mm.
+    screen: { w: 190, h: 118 },
+    iml: { w: 216, h: 150 },
     digital: null,
     prices: tier([
       [1000, 2090.93],

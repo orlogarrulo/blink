@@ -28,16 +28,17 @@ export type CupShape = { top: number; bot: number; height: number };
 
 /**
  * Print window for a cup and a print area (both in mm). The ECO50 mould puts
- * the 195 × 110 mm area 10 mm under the rim; other cups keep the same ratio.
+ * the screen-print area 10 mm under the rim; other cups keep the same ratio.
  */
-export function printWindow(cup: CupShape, area: { w: number; h: number }) {
+export function printWindow(cup: CupShape, area: { w: number; h: number; rim?: number; full?: boolean }, wrapAround = false) {
   const H = cup.height;
-  const gap = Math.min(H * 0.067, Math.max(1.5, (H - area.h) * 0.55));
-  const bandH = Math.min(area.h, H - gap - 2);
+  const gap = area.rim ?? Math.min(H * 0.067, Math.max(1.5, (H - area.h) * 0.55));
+  const bandH = Math.min(area.h, H - gap - (area.rim !== undefined ? 0 : 2));
   const yMid = gap + bandH / 2;
   const rMid = cup.top / 2 - ((cup.top - cup.bot) / 2) * (yMid / H);
   const around = Math.PI * 2 * rMid;
-  const full = area.w >= around * 0.97;
+  // A pattern always wraps the full circumference so its edges meet; so does a full-cover area.
+  const full = wrapAround || area.full === true || area.w >= around * 0.97;
   const widthMm = full ? around : area.w;
   const span = full ? Math.PI * 2 : area.w / rMid;
   return { band0: gap, bandH, rMid, around, full, widthMm, span };

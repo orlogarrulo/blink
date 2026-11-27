@@ -8,7 +8,7 @@
  * run along the cone generators and the art keeps its millimetre scale at mid
  * height, so it widens toward the mouth like an IML label does.
  */
-import { printMetaOf, type PrintMeta } from "@/lib/print-meta";
+import { printMetaOf, printWindow, type PrintMeta } from "@/lib/print-meta";
 
 export type CupScene = {
   texture: HTMLCanvasElement | null;
@@ -18,7 +18,7 @@ export type CupScene = {
   cover: number;
   body?: string | null;
   liquid?: "none" | "beer" | "soda";
-  area?: { w: number; h: number } | null;
+  area?: { w: number; h: number; rim?: number; full?: boolean } | null;
 };
 
 const VERT = `#version 300 es
@@ -106,9 +106,9 @@ void main() {
   vec3 PT = O + tt * D;
   float rT = length(PT.xz);
   float fwT = max(fwidth(rT), 1e-4);
-  float lip = 0.75;
+  float lip = 1.2;
   float inMouth = 1.0 - smoothstep(uRt - lip - fwT, uRt - lip, rT);
-  float onRing = smoothstep(uRt - lip - fwT, uRt - lip, rT) * (1.0 - smoothstep(uRt + 0.45, uRt + 0.45 + fwT, rT));
+  float onRing = smoothstep(uRt - lip - fwT, uRt - lip, rT) * (1.0 - smoothstep(uRt - fwT, uRt, rT));
 
   // Cone silhouette coverage, anti-aliased in screen space.
   float fwD = max(fwidth(disc), 1e-6);
@@ -153,14 +153,16 @@ void main() {
     fc += 0.028 * exp(-pow((xs + 0.46) / 0.11, 2.0)) + 0.014 * exp(-pow((xs - 0.62) / 0.07, 2.0));
     fc -= 0.018 * (1.0 - y / uH);
     vec3 frostC = vec3(fc, fc + 0.003, fc + 0.008);
-    // Rolled lip just under the rim.
-    float lipBand = smoothstep(uH - 3.2, uH - 2.6, y);
-    frostC = mix(frostC, vec3(0.975), lipBand * 0.8);
-    frostC -= 0.05 * exp(-pow((y - (uH - 3.3)) / 0.35, 2.0));
-    // Thicker foot.
-    float foot = 1.0 - smoothstep(4.5, 7.5, y);
-    frostC = mix(frostC, vec3(0.83, 0.855, 0.875), foot * 0.55);
-    frostC += 0.05 * exp(-pow((y - 6.2) / 0.45, 2.0)) - 0.035 * exp(-pow((y - 1.4) / 0.6, 2.0));
+    // Rim lip (about 4 mm): whiter, more translucent, with a soft shadow line under it.
+    float lipBand = smoothstep(uH - 7.0, uH - 1.5, y);
+    frostC = mix(frostC, vec3(0.95, 0.953, 0.957) + 0.015 * pow(ndv, 2.0), lipBand * 0.25);
+    frostC -= 0.015 * exp(-pow((y - (uH - 4.5)) / 0.45, 2.0));
+    frostC -= 0.09 * exp(-pow((y - (uH - 0.3)) / 0.3, 2.0));
+    // Thick clear foot with the slightly teal edge of polypropylene.
+    float foot = 1.0 - smoothstep(4.2, 5.6, y);
+    frostC = mix(frostC, vec3(0.80, 0.865, 0.87), foot * 0.6);
+    frostC += 0.07 * exp(-pow((y - 4.9) / 0.35, 2.0));
+    frostC = mix(frostC, vec3(0.62, 0.74, 0.75), 0.55 * exp(-pow((y - 0.7) / 0.55, 2.0)));
     float frostA = mix(0.80, 0.93, smoothstep(0.2, 0.9, edge));
     if (uLiquid > 0 && P1.y < uLevel) frostA *= 0.62;
     vec4 wall = over(vec4(frostC * frostA, frostA), back);
@@ -198,7 +200,7 @@ void main() {
   // Rim ring drawn last so it covers the front/mouth seam.
   if (onRing > 0.0 && D.y < 0.0) {
     float ang = atan(PT.x, PT.z);
-    float rc = 0.93 + 0.04 * cos(ang) - 0.03 * smoothstep(uRt - 0.2, uRt + 0.45, rT);
+    float rc = 0.78 + 0.05 * cos(ang);
     color = mix(color, vec4(vec3(rc, rc + 0.003, rc + 0.007), 1.0), onRing);
   }
 
@@ -218,7 +220,7 @@ type GL = {
 let shared: GL | null | undefined;
 const textures = new WeakMap<HTMLCanvasElement, WebGLTexture>();
 const recent: HTMLCanvasElement[] = [];
-const MAX_TEXTURES = 10;
+const MAX_TEXTURES = 28;
 
 function init(): GL | null {
   if (shared !== undefined) return shared;
@@ -330,7 +332,11 @@ function hexRgb(hex: string): [number, number, number] | null {
 export function bandFor(scene: Pick<CupScene, "top" | "bot" | "heightMm" | "cover" | "area">, meta: PrintMeta | null) {
   if (meta) return { band0: meta.band0, bandH: meta.bandH };
   const H = scene.heightMm;
-  const wantH = scene.area ? scene.area.h : Math.max(0.3, Math.min(0.92, scene.cover || 0.7)) * H;
+  if (scene.area) {
+    const win = printWindow({ top: scene.top, bot: scene.bot, height: H }, scene.area);
+    return { band0: win.band0, bandH: win.bandH };
+  }
+  const wantH = Math.max(0.3, Math.min(0.92, scene.cover || 0.7)) * H;
   const gap = Math.min(H * 0.067, Math.max(1.5, (H - wantH) * 0.55));
   const bandH = Math.min(wantH, H - gap - 2);
   return { band0: gap, bandH };
@@ -356,8 +362,8 @@ export function renderCupGL(ctx: CanvasRenderingContext2D, w: number, h: number,
   const Rb = scene.bot / 2;
 
   // Camera: slightly above the rim, far enough to keep the mockup's gentle perspective.
-  const dist = H * 11;
-  const cam: Vec3 = [0, H + 0.085 * dist, dist];
+  const dist = H * 18;
+  const cam: Vec3 = [0, H + 0.024 * dist, dist];
   const target: Vec3 = [0, H * 0.5, 0];
   const fwd = norm(sub(target, cam));
   const right: Vec3 = [1, 0, 0];
@@ -403,7 +409,7 @@ export function renderCupGL(ctx: CanvasRenderingContext2D, w: number, h: number,
     start = full ? -Math.PI : -span / 2;
   } else if (scene.area) {
     span = Math.min(Math.PI * 2, scene.area.w / Math.max(1, rMid));
-    full = span >= Math.PI * 1.94 ? 1 : 0;
+    full = scene.area.full || span >= Math.PI * 1.94 ? 1 : 0;
     if (full) span = Math.PI * 2;
     start = full ? -Math.PI : -span / 2;
   }

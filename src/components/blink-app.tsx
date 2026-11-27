@@ -6,6 +6,7 @@ import {
   CUPS,
   PROCESS_LABEL,
   areaFor,
+  fullArea,
   cupById,
   deliveryDate,
   freightDays,
@@ -37,6 +38,8 @@ type Draft = {
   qty: number;
   cupId: string;
   process: Process;
+  /** Print all round and down to the base, leaving only the rim. */
+  cover360?: boolean;
   sample: SampleId | null;
   phrase: string;
   font: FontId;
@@ -155,13 +158,14 @@ export function BlinkApp() {
   const [error, setError] = useState("");
   const [compareId, setCompareId] = useState("ECO12");
   const [compareQty, setCompareQty] = useState(400);
-  const [right, setRight] = useState<{ phrase: string; font: FontId; sample: SampleId | null; tint: string | null; cupTint: string | null; process: Process | null }>({
+  const [right, setRight] = useState<{ phrase: string; font: FontId; sample: SampleId | null; tint: string | null; cupTint: string | null; process: Process | null; cover360: boolean }>({
     phrase: "",
     font: "outfit",
     sample: null,
     tint: null,
     cupTint: null,
     process: null,
+    cover360: false,
   });
   const [spin, setSpin] = useState(true);
   const [zoomedCup, setZoomedCup] = useState<string | null>(null);
@@ -224,8 +228,11 @@ export function BlinkApp() {
   const other = cupById(compareId);
   const allowed = processesFor(cup);
   const process = allowed.includes(draft.process) ? draft.process : allowed[0];
-  const area = areaFor(cup, process);
-  const otherArea = areaFor(other, processesFor(other).includes(process) ? process : processesFor(other)[0]);
+  const cover360 = Boolean(draft.cover360) && process === "iml";
+  const area = cover360 ? fullArea(cup) : areaFor(cup, process);
+  const otherPick = right.process && processesFor(other).includes(right.process) ? right.process : processesFor(other)[0];
+  const otherCover360 = right.cover360 && otherPick === "iml";
+  const otherArea = otherCover360 ? fullArea(other) : areaFor(other, otherPick);
   const leftQuote = liveQuote(cup, draft.qty);
   const rightQuote = liveQuote(other, compareQty);
   const orderQty = leftQuote.charge + rightQuote.charge;
@@ -575,6 +582,7 @@ export function BlinkApp() {
       phone: draft.phone ? `${draft.dial} ${draft.phone}` : "",
       cup: item,
       process: itemProcess,
+      area: itemArea,
       qty: numbers.charge,
       colors: sheetColors,
       label: printLabel,
@@ -587,7 +595,7 @@ export function BlinkApp() {
     const tech = techSheet({
       cup: item,
       area: itemArea,
-      process: itemProcess === "iml" ? "Quadricromia IML" : itemProcess === "serigrafia" ? "Serigrafia" : "Digital",
+      process: itemArea.full ? "Quadricromia IML · cobertura total 360°" : itemProcess === "iml" ? "Quadricromia IML" : itemProcess === "serigrafia" ? "Serigrafia" : "Digital",
       label: printLabel,
       bodyColor: body,
     });
@@ -676,7 +684,9 @@ export function BlinkApp() {
             const isCup2 = item.id === compareId;
             const on = gridTarget === "cup1" ? isCup1 : isCup2;
             const window = areaFor(item, processesFor(item).includes(process) ? process : processesFor(item)[0]);
-            const showTexture = isCup1 && chosen ? chosen : isCup2 && rightShown ? rightShown : null;
+            const shownArea = isCup1 ? area : isCup2 ? otherArea : window;
+            const rawTexture = isCup1 && chosen ? chosen : isCup2 && rightShown ? rightShown : null;
+            const showTexture = rawTexture && shownArea ? wrapPrint(rawTexture, isCup1 ? pattern : rightPattern, 0.9, { cup: item, area: shownArea, ppm: 4 }) : rawTexture;
             const showBody = isCup1 ? cupTint : isCup2 ? right.cupTint : null;
             return (
               <li key={item.id}>
@@ -696,7 +706,7 @@ export function BlinkApp() {
                     bot={item.bot}
                     heightMm={item.height}
                     cover={window ? window.h / item.height : 0.6}
-                    area={window}
+                    area={shownArea}
                     spin={false}
                     className="pointer-events-none h-36 w-full"
                   />
@@ -733,7 +743,7 @@ export function BlinkApp() {
                           className={`w-full rounded-3xl border bg-card px-1 pb-3 pt-1 text-left ${on ? "border-ink" : "border-line"}`}
                         >
                           <CupView
-                            texture={texture ?? null}
+                            texture={(area && texture ? wrapPrint(texture, pattern, 0.9, { cup, area, ppm: 4 }) : texture) ?? null}
                             body={cupTint}
                             top={cup.top}
                             bot={cup.bot}
@@ -764,7 +774,7 @@ export function BlinkApp() {
                           className={`w-full rounded-3xl border bg-card px-1 pb-3 pt-1 text-left ${on ? "border-ink" : "border-line"}`}
                         >
                           <CupView
-                            texture={texture}
+                            texture={otherArea && texture ? wrapPrint(texture, rightPattern, 0.9, { cup: other, area: otherArea, ppm: 4 }) : texture}
                             body={right.cupTint}
                             top={other.top}
                             bot={other.bot}
@@ -836,8 +846,11 @@ export function BlinkApp() {
                   </label>
                   <div className="mt-2 flex flex-wrap gap-1">
                     {processesFor(cup).map((item) => (
-                      <button key={item} type="button" onClick={() => patch({ process: item })} className={`min-h-11 rounded-full px-3 text-xs ${process === item ? "bg-ink text-paper" : "bg-card"}`}>{t.process[item]}</button>
+                      <button key={item} type="button" onClick={() => patch({ process: item, cover360: false })} className={`min-h-11 rounded-full px-3 text-xs ${process === item && !cover360 ? "bg-ink text-paper" : "bg-card"}`}>{t.process[item]}</button>
                     ))}
+                    {processesFor(cup).includes("iml") ? (
+                      <button type="button" onClick={() => patch({ process: "iml", cover360: true })} className={`min-h-11 rounded-full px-3 text-xs ${cover360 ? "bg-ink text-paper" : "bg-card"}`}>{t.cover360}</button>
+                    ) : null}
                   </div>
                   <div className="mt-2 grid grid-cols-2 gap-1">
                     <label className="flex min-h-11 cursor-pointer items-center justify-center rounded-xl border border-dashed border-line px-1 text-center text-xs">{t.logo}<input className="sr-only" type="file" multiple accept="application/pdf,image/png,image/jpeg,image/webp,image/svg+xml" onChange={(event) => { void onFiles(event.target.files, "logo", "beer"); event.target.value = ""; }} /></label>
@@ -909,8 +922,11 @@ export function BlinkApp() {
                   </label>
                   <div className="mt-2 flex flex-wrap gap-1">
                     {processesFor(other).map((item) => (
-                      <button key={item} type="button" onClick={() => setRight((current) => ({ ...current, process: item }))} className={`min-h-11 rounded-full px-3 text-xs ${otherProcess === item ? "bg-ink text-paper" : "bg-card"}`}>{t.process[item]}</button>
+                      <button key={item} type="button" onClick={() => setRight((current) => ({ ...current, process: item, cover360: false }))} className={`min-h-11 rounded-full px-3 text-xs ${otherProcess === item && !otherCover360 ? "bg-ink text-paper" : "bg-card"}`}>{t.process[item]}</button>
                     ))}
+                    {processesFor(other).includes("iml") ? (
+                      <button type="button" onClick={() => setRight((current) => ({ ...current, process: "iml", cover360: true }))} className={`min-h-11 rounded-full px-3 text-xs ${otherCover360 ? "bg-ink text-paper" : "bg-card"}`}>{t.cover360}</button>
+                    ) : null}
                   </div>
                   <div className="mt-2 grid grid-cols-2 gap-1">
                     <label className="flex min-h-11 cursor-pointer items-center justify-center rounded-xl border border-dashed border-line px-1 text-center text-xs">{t.logo}<input className="sr-only" type="file" multiple accept="application/pdf,image/png,image/jpeg,image/webp,image/svg+xml" onChange={(event) => { void onFiles(event.target.files, "logo", "soda"); event.target.value = ""; }} /></label>
@@ -1129,7 +1145,7 @@ export function BlinkApp() {
       {zoomedCup && (() => {
         const item = CUPS.find(c => c.id === zoomedCup);
         if (!item) return null;
-        const win = areaFor(item, processesFor(item).includes(process) ? process : processesFor(item)[0]);
+        const win = item.id === cup.id ? area : item.id === compareId ? otherArea : areaFor(item, processesFor(item).includes(process) ? process : processesFor(item)[0]);
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setZoomedCup(null)}>
             <div className="relative max-h-[90vh] w-full max-w-2xl rounded-3xl bg-white p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
