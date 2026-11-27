@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { ART_PLACE0, clampArtPlace, type ArtPlace } from "@/lib/art-place";
 import { drinkLevels, renderCupGL } from "@/lib/cup-gl";
+import { printWindow, topMarginMm } from "@/lib/print-meta";
 
 type Props = {
   texture: HTMLCanvasElement | null;
@@ -9,7 +10,7 @@ type Props = {
   heightMm: number;
   cover: number;
   /** Print area in mm (from the catalogue); places the print window like the mould. */
-  area?: { w: number; h: number } | null;
+  area?: { w: number; h: number; rim?: number; full?: boolean } | null;
   body?: string | null;
   liquid?: "none" | "beer" | "soda";
   spin: boolean;
@@ -236,7 +237,7 @@ export function CupView({ texture, top, bot, heightMm, cover, area = null, body 
 
 type CupDraw = {
   texture: HTMLCanvasElement | null;
-  area?: { w: number; h: number } | null;
+  area?: { w: number; h: number; rim?: number; full?: boolean } | null;
   top: number;
   bot: number;
   heightMm: number;
@@ -272,9 +273,17 @@ function drawCup2d(
       const rxAt = (t: number) => topR + (botR - topR) * t;
       const strips = width < 180 ? 64 : width < 420 ? 120 : 168;
 
-      // Print follows the front lip and runs to the base. The rim stroke stays clear.
-      const band0 = 0;
+      // Print and body colour stay below the unprinted rim band; the lip is natural PP.
+      const Hmm = spec.heightMm;
+      const win = spec.area
+        ? printWindow({ top: spec.top, bot: spec.bot, height: Hmm }, spec.area)
+        : { band0: topMarginMm({ top: spec.top, bot: spec.bot, height: Hmm }, { h: Math.max(0.3, Math.min(0.92, spec.cover || 0.7)) * Hmm }) };
+      const tRim = Math.max(0, Math.min(0.4, win.band0 / Hmm));
+      const band0 = tRim;
       const band1 = 1;
+      const yPrintTop = topCy + bodyH * tRim;
+      const rAtFrac = (t: number) => topR + (botR - topR) * t;
+      const rRim = rAtFrac(tRim);
 
       if (spec.studio) {
         const sky = ctx.createLinearGradient(0, 0, 0, height);
@@ -334,10 +343,11 @@ function drawCup2d(
       ctx.fillRect(cx - topR, topCy, topR * 2, bodyH);
       ctx.restore();
 
-      // Colour and print share one silhouette: front lip curve, full width, down to the base.
+      // Colour and print share one silhouette: from below the rim band down to the base.
       const printPath = () => {
         ctx.beginPath();
-        ctx.ellipse(cx, topCy, topR + 0.6, ry, 0, Math.PI, 0, false);
+        ctx.moveTo(cx - rRim - 0.6, yPrintTop);
+        ctx.lineTo(cx + rRim + 0.6, yPrintTop);
         ctx.lineTo(cx + botR + 0.6, topCy + bodyH);
         ctx.lineTo(cx - botR - 0.6, topCy + bodyH);
         ctx.closePath();
@@ -419,7 +429,7 @@ function drawCup2d(
       }
 
       if (spec.texture) {
-        const y0 = topCy;
+        const y0 = yPrintTop;
         const y1 = topCy + bodyH;
         ctx.save();
         printPath();
@@ -462,7 +472,7 @@ function drawCup2d(
       // rim / mouth - thin same-material lip
       ctx.beginPath();
       ctx.ellipse(cx, topCy, topR, ry, 0, 0, Math.PI * 2);
-      ctx.strokeStyle = spec.body ? mixWhite(spec.body)(0.12) : "#d8d6d3";
+      ctx.strokeStyle = "#d8d6d3";
       ctx.lineWidth = Math.max(1.2, topR * 0.04);
       ctx.stroke();
       ctx.beginPath();
@@ -471,19 +481,6 @@ function drawCup2d(
       ctx.lineWidth = Math.max(0.8, topR * 0.02);
       ctx.stroke();
 }
-
-function mixWhite(hex: string) {
-  const raw = hex.replace("#", "");
-  const r = parseInt(raw.slice(0, 2), 16);
-  const g = parseInt(raw.slice(2, 4), 16);
-  const b = parseInt(raw.slice(4, 6), 16);
-  return (amount: number) => {
-    const mix = (c: number) => Math.round(c + (255 - c) * amount);
-    return `rgb(${mix(r)},${mix(g)},${mix(b)})`;
-  };
-}
-
-
 
 export function cupStills(
   spec: CupDraw,

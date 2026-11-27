@@ -13,14 +13,17 @@ export const Route = createRootRoute({
       { name: "theme-color", content: "#F6F0E6" },
     ],
     links: [
-      { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },
+      { rel: "icon", type: "image/svg+xml", href: "/favicon.svg?v=b" },
+      { rel: "icon", type: "image/png", sizes: "32x32", href: "/favicon-32.png?v=b" },
+      { rel: "icon", type: "image/png", sizes: "16x16", href: "/favicon-16.png?v=b" },
+      { rel: "shortcut icon", href: "/favicon.ico?v=b" },
       { rel: "stylesheet", href: appCss },
       {
         rel: "stylesheet",
         href: "https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Caveat:wght@600&family=Fraunces:opsz,wght@9..144,560;9..144,650&family=Outfit:wght@400;500;600&display=swap",
       },
-      { rel: "manifest", href: "/manifest.webmanifest" },
-      { rel: "apple-touch-icon", href: "/__grok/icon-180.png" },
+      { rel: "manifest", href: "/manifest.webmanifest?v=b" },
+      { rel: "apple-touch-icon", href: "/__grok/icon-180.png?v=b" },
     ],
   }),
   component: () => (

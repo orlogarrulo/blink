@@ -8,7 +8,7 @@
  * run along the cone generators and the art keeps its millimetre scale at mid
  * height, so it widens toward the mouth like an IML label does.
  */
-import { printMetaOf, printWindow, type PrintMeta } from "@/lib/print-meta";
+import { printMetaOf, printWindow, topMarginMm, type PrintMeta } from "@/lib/print-meta";
 
 export type CupScene = {
   texture: HTMLCanvasElement | null;
@@ -216,7 +216,13 @@ vec4 interior(vec3 P, vec3 D) {
   float side = abs(P.x) / max(1.0, rAt(y));
   c -= 0.05 * side * side;
   vec3 col = vec3(c, c + 0.004, c + 0.01);
-  if (uBody.a > 0.0) col = uBody.rgb * (0.62 + 0.25 * (y / uH)) * (1.0 - 0.15 * side * side);
+  if (uBody.a > 0.0) {
+    vec3 tinted = uBody.rgb * (0.62 + 0.25 * (y / uH)) * (1.0 - 0.15 * side * side);
+    float slantIn = sqrt(uH * uH + (uRt - uRb) * (uRt - uRb)) / uH;
+    float fromRim = (uH - y) * slantIn;
+    // Inside of the lip stays natural PP; colour starts below the unprinted band.
+    col = mix(col, tinted, smoothstep(uBand0 - 0.25, uBand0 + 0.35, fromRim));
+  }
 #ifdef DRINK
   if (P.y < uFoamTop && P.y > 5.0) col = P.y < uLevel ? (LIQ == 1 ? vec3(0.72, 0.38, 0.08) : vec3(0.06, 0.02, 0.015)) : (LIQ == 1 ? vec3(0.97, 0.94, 0.88) : vec3(0.55, 0.40, 0.32));
 #endif
@@ -367,22 +373,22 @@ void main() {
 #endif
     vec4 wall = over(vec4(frostC * frostA, frostA), back);
 
-    // A coloured cup is moulded in coloured polypropylene: the colour runs from the rim down
-    // through the thick foot, with the foot a little deeper and a soft step where it starts.
+    float slant = sqrt(uH * uH + (uRt - uRb) * (uRt - uRb)) / uH;
+    // A coloured cup is moulded in coloured polypropylene from just under the
+    // unprinted rim band down through the thick foot. The mouth stays natural PP.
     if (uBody.a > 0.0) {
       vec3 bodyRgb = blinkLight(uBody.rgb, N, V);
       bodyRgb *= mix(0.82, 1.0, smoothstep(0.4, 4.6, y));
       bodyRgb += uBody.rgb * 0.06 * exp(-pow((y - 4.9) / 0.35, 2.0));
       bodyRgb *= 1.0 - 0.10 * exp(-pow(y / 0.45, 2.0));
-      bodyRgb += 0.035 * exp(-pow((y - (uH - 0.9)) / 0.6, 2.0));
       if (wet > 0.0) bodyRgb *= LIQ == 1 ? 0.97 : 0.94;
-      wall = vec4(bodyRgb, 1.0);
+      float fromRim = (uH - y) * slant;
+      float bodyMask = smoothstep(uBand0 - 0.25, uBand0 + 0.35, fromRim);
+      wall = mix(wall, vec4(bodyRgb, 1.0), bodyMask);
     }
-
 
     // Print window on the outer surface.
     float printA = 0.0;
-    float slant = sqrt(uH * uH + (uRt - uRb) * (uRt - uRb)) / uH;
     float s = (uH - P1.y) * slant;
     float v = (s - uBand0) / uBandH;
     float thetaRaw = atan(P1.x, P1.z);
@@ -425,7 +431,8 @@ void main() {
   if (onRing > 0.0 && D.y < 0.0) {
     float ang = atan(PT.x, PT.z);
     float rc = 0.78 + 0.05 * cos(ang);
-    vec3 ringC = uBody.a > 0.0 ? uBody.rgb * (0.86 + 0.06 * cos(ang)) : vec3(rc, rc + 0.003, rc + 0.007);
+    // The drinking lip is always natural polypropylene, never the body tint.
+    vec3 ringC = vec3(rc, rc + 0.003, rc + 0.007);
     color = mix(color, vec4(ringC, 1.0), onRing);
   }
 
@@ -595,7 +602,7 @@ export function bandFor(scene: Pick<CupScene, "top" | "bot" | "heightMm" | "cove
     return { band0: win.band0, bandH: win.bandH };
   }
   const wantH = Math.max(0.3, Math.min(0.92, scene.cover || 0.7)) * H;
-  const gap = Math.min(H * 0.067, Math.max(1.5, (H - wantH) * 0.55));
+  const gap = topMarginMm({ top: scene.top, bot: scene.bot, height: H }, { h: wantH });
   const bandH = Math.min(wantH, H - gap - 2);
   return { band0: gap, bandH };
 }

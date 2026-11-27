@@ -9,7 +9,7 @@ export type Area = {
   full?: boolean;
 };
 
-/** Rim lip left unprinted when the print covers the whole cup. */
+/** Rim lip left unprinted when the print covers the whole cup. Also the minimum clear band under the mouth for every process. */
 export const FULL_COVER_RIM_MM = 4;
 
 /** Whole-cup print: around the circumference at mid height, from the base to just under the rim. */
