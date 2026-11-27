@@ -50,7 +50,8 @@ export type Cup = {
 const tier = (rows: [number, number][]): PriceTier[] => rows.map(([qty, kz]) => ({ qty, kz }));
 
 /**
- * Print windows are width-around × height, from Instruções de impressão v12-2025.
+ * Print windows are width-around × height. Where re-uz.com publishes a size it is used (URL on each cup);
+ * otherwise they come from Instruções de impressão v12-2025.
  * Capacities are from the 2025 PT catalogue. Prices are the IML client table (Kz).
  * Body sizes are the manufacturer figures (height, top Ø, bottom Ø). ECO20 is not on the public spec page.
  */
@@ -64,8 +65,9 @@ export const CUPS: Cup[] = [
     bot: 40,
     height: 70,
     measured: true,
-    screen: { w: 130, h: 38 },
-    iml: { w: 196, h: 73 },
+    // re-uz.com/en/product/reusable-cup-10-cl-ecocup-eco12 (27/11/2026): IML 150 × 70 mm, serigrafia 130 × 50 mm (listed as 50 × 130).
+    screen: { w: 130, h: 50 },
+    iml: { w: 150, h: 70 },
     digital: null,
     prices: tier([
       [1500, 1756.1],
@@ -84,8 +86,9 @@ export const CUPS: Cup[] = [
     bot: 42,
     height: 95,
     measured: true,
-    screen: { w: 140, h: 70 },
-    iml: { w: 182, h: 96 },
+    // re-uz.com/en/product/reusable-cup-15-cl-ecocup-eco18 (27/11/2026): IML 170 × 90 mm, serigrafia 135 × 75 mm.
+    screen: { w: 135, h: 75 },
+    iml: { w: 170, h: 90 },
     digital: null,
     prices: tier([
       [1200, 1728.05],
@@ -104,6 +107,7 @@ export const CUPS: Cup[] = [
     bot: 48,
     height: 100,
     measured: false,
+    // Not sold on re-uz.com (no ECO20 page): sizes stay from Instruções de impressão v12-2025.
     screen: { w: 162, h: 66 },
     iml: { w: 160, h: 70 },
     digital: null,
@@ -124,8 +128,9 @@ export const CUPS: Cup[] = [
     bot: 54,
     height: 104,
     measured: true,
-    screen: { w: 175, h: 72 },
-    iml: { w: 195, h: 98.4 },
+    // re-uz.com/en/product/reusable-cup-25-cl-ecocup-eco28 (27/11/2026): IML 198 × 103 mm, serigrafia 185 × 81 mm; the digital figure there (72 × 199 mm) repeats ECO30's, so digital stays as before.
+    screen: { w: 185, h: 81 },
+    iml: { w: 198, h: 103 },
     digital: { w: 200, h: 96 },
     prices: tier([
       [1000, 1874.93],
@@ -144,9 +149,10 @@ export const CUPS: Cup[] = [
     bot: 54,
     height: 117,
     measured: true,
+    // re-uz.com/en/product/reusable-cup-33-cl-ecocup-eco30 (27/11/2026): IML 201 × 115 mm (listed as 115 × 201), digital 199 × 72 mm (listed as 72 × 199); no screen-print size published, serigrafia stays as before.
     screen: { w: 185, h: 78 },
-    iml: { w: 197.9, h: 112.9 },
-    digital: { w: 200, h: 120 },
+    iml: { w: 201, h: 115 },
+    digital: { w: 199, h: 72 },
     prices: tier([
       [1000, 1874.93],
       [1500, 1681.34],
@@ -164,8 +170,9 @@ export const CUPS: Cup[] = [
     bot: 52,
     height: 140,
     measured: true,
-    screen: { w: 185, h: 95 },
-    iml: { w: 201, h: 138 },
+    // re-uz.com/en/product/reusable-cup-40-cl-ecocup-eco40 (27/11/2026): IML 185 × 106 mm (listed as 106 × 185), serigrafia 185 × 106 mm.
+    screen: { w: 185, h: 106 },
+    iml: { w: 185, h: 106 },
     digital: null,
     prices: tier([
       [1200, 1922.45],
@@ -205,8 +212,9 @@ export const CUPS: Cup[] = [
     bot: 62,
     height: 162,
     measured: true,
-    screen: { w: 203, h: 106 },
-    iml: { w: 224.9, h: 155.9 },
+    // re-uz.com/en/product/reusable-cup-50-cl-ecocup-eco60 (27/11/2026): IML 226 × 159 mm, serigrafia 220 × 113 mm.
+    screen: { w: 220, h: 113 },
+    iml: { w: 226, h: 159 },
     digital: { w: 226.8, h: 142 },
     prices: tier([
       [1200, 2138.45],
@@ -225,8 +233,9 @@ export const CUPS: Cup[] = [
     bot: 85,
     height: 137,
     measured: true,
-    screen: { w: 272, h: 90 },
-    iml: { w: 297, h: 135 },
+    // re-uz.com/en/product/reusable-cup-90-cl-ecocup-eco100 (27/11/2026): sold there as ECO100 (90 cl): IML 330 × 135 mm, serigrafia 309 × 138 mm (the window is capped to the body height).
+    screen: { w: 309, h: 138 },
+    iml: { w: 330, h: 135 },
     digital: null,
     prices: tier([
       [1000, 2507.81],
@@ -245,6 +254,7 @@ export const CUPS: Cup[] = [
     bot: 50,
     height: 120,
     measured: true,
+    // re-uz.com/en/product/glass-a-cocktail-mojito-ecocup-ecomojito (27/11/2026): serigrafia 200 × 30 mm; no IML size published (screen print only there), IML stays as before.
     screen: { w: 200, h: 30 },
     iml: { w: 195, h: 85 },
     digital: null,
