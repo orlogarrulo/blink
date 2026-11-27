@@ -611,20 +611,18 @@ export function BlinkApp() {
       label: unrolled,
       bodyColor: body,
     });
-    const turns = [0, Math.PI * 0.28, Math.PI];
-    const solid = cupStills(
-      {
-        texture: unrolled,
-        area: itemArea,
-        top: item.top,
-        bot: item.bot,
-        heightMm: item.height,
-        cover: motif ? 0.9 : itemArea.h / item.height,
-        body,
-        liquid: side === "beer" ? liquid : rightLiquid,
-      },
-      turns,
-    );
+    const stillSpec = {
+      texture: unrolled,
+      area: itemArea,
+      top: item.top,
+      bot: item.bot,
+      heightMm: item.height,
+      cover: motif ? 0.9 : itemArea.h / item.height,
+      body,
+      liquid: side === "beer" ? liquid : rightLiquid,
+    };
+    // The upside-down view is drawn without the table shadow, which would otherwise sit above it.
+    const solid = [...cupStills(stillSpec, [0, Math.PI * 0.28]), ...cupStills({ ...stillSpec, shadow: false }, [Math.PI])];
     const viewLabels = ["Frente", "Três quartos", "Lado / invertido"];
     // The third view is upside down (mouth facing down, as if on a table); viewsSheet keeps it aligned.
     const views = viewsSheet(item.name, viewLabels, solid, [false, false, true]);

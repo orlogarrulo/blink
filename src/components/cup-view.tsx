@@ -162,6 +162,7 @@ type CupDraw = {
   cover: number;
   body?: string | null;
   liquid?: "none" | "beer" | "soda";
+  shadow?: boolean;
 };
 
 function drawCup2d(
@@ -331,7 +332,7 @@ function drawCup2d(
       // rim / mouth - thin same-material lip
       ctx.beginPath();
       ctx.ellipse(cx, topCy, topR, ry, 0, 0, Math.PI * 2);
-      ctx.strokeStyle = "#d8d6d3";
+      ctx.strokeStyle = spec.body ? mixWhite(spec.body)(0.12) : "#d8d6d3";
       ctx.lineWidth = Math.max(1.2, topR * 0.04);
       ctx.stroke();
       ctx.beginPath();
