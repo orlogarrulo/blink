@@ -651,7 +651,7 @@ export function BlinkApp() {
     <main className="mx-auto min-h-dvh w-full max-w-6xl overflow-x-hidden px-4 pb-[max(4rem,env(safe-area-inset-bottom))] pt-[max(1.25rem,env(safe-area-inset-top))] sm:px-6">
       <header className="flex w-full flex-wrap items-end justify-between gap-3">
         <BlinkLogo slogan={t.slogan} />
-        <div className="flex items-center gap-1" role="group" aria-label={t.language}>
+        <div className="ml-auto flex items-center gap-1" role="group" aria-label={t.language}>
           {LANGS.map((item) => (
             <button
               key={item.id}
@@ -664,7 +664,6 @@ export function BlinkApp() {
             </button>
           ))}
         </div>
-        <p className="w-full max-w-xl text-sm leading-relaxed text-muted">{t.intro}</p>
       </header>
 
       <section className="mt-6">
@@ -1275,6 +1274,7 @@ export function BlinkApp() {
           </div>
         );
       })()}
+      <footer className="mt-16 text-center text-sm text-muted">© BLINK 2026</footer>
     </main>
   );
 }
