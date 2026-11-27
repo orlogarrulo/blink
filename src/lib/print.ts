@@ -32,17 +32,25 @@ export function nearest(rgb: [number, number, number], palette: string[]): strin
 }
 
 export function quantize(canvas: HTMLCanvasElement, palette: string[]) {
-  const ctx = canvas.getContext("2d");
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
   if (!ctx || palette.length === 0) return;
   const frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
   const data = frame.data;
+  const inks = palette.map(hexToRgb);
   for (let i = 0; i < data.length; i += 4) {
     if (data[i + 3] < 16) continue;
-    const hex = nearest([data[i], data[i + 1], data[i + 2]], palette);
-    const [r, g, b] = hexToRgb(hex);
-    data[i] = r;
-    data[i + 1] = g;
-    data[i + 2] = b;
+    let best = 0;
+    let score = Infinity;
+    for (let k = 0; k < inks.length; k += 1) {
+      const d = (inks[k][0] - data[i]) ** 2 + (inks[k][1] - data[i + 1]) ** 2 + (inks[k][2] - data[i + 2]) ** 2;
+      if (d < score) {
+        score = d;
+        best = k;
+      }
+    }
+    data[i] = inks[best][0];
+    data[i + 1] = inks[best][1];
+    data[i + 2] = inks[best][2];
     data[i + 3] = 255;
   }
   ctx.putImageData(frame, 0, 0);
@@ -166,7 +174,7 @@ export function paintLabel(options: {
   const canvas = document.createElement("canvas");
   canvas.width = Math.max(8, Math.round(area.w * ppm));
   canvas.height = Math.max(8, Math.round(area.h * ppm));
-  const ctx = canvas.getContext("2d");
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
   if (!ctx) return canvas;
   if (options.process !== "serigrafia") {
     ctx.fillStyle = "#ffffff";
@@ -249,65 +257,70 @@ function isolateInk(canvas: HTMLCanvasElement) {
   const data = frame.data;
   const w = canvas.width;
   const h = canvas.height;
-  const seen = new Uint8Array(w * h);
-  const stack: number[] = [];
-  const paperAt = (i: number) => {
-    if (data[i + 3] < 16) return true;
-    const light = (data[i] + data[i + 1] + data[i + 2]) / 3;
-    const chroma = Math.max(data[i], data[i + 1], data[i + 2]) - Math.min(data[i], data[i + 1], data[i + 2]);
-    return light > 238 && chroma < 18;
-  };
-  for (let x = 0; x < w; x += 1) {
-    stack.push(x, (h - 1) * w + x);
+  const total = w * h;
+  // 1 = paper (clear, or white with no colour), worked out once per pixel.
+  const paper = new Uint8Array(total);
+  for (let p = 0, i = 0; p < total; p += 1, i += 4) {
+    if (data[i + 3] < 16) {
+      paper[p] = 1;
+      continue;
+    }
+    const r = data[i];
+    const g = data[i + 1];
+    const b = data[i + 2];
+    const hi = r > g ? (r > b ? r : b) : g > b ? g : b;
+    const lo = r < g ? (r < b ? r : b) : g < b ? g : b;
+    if (r + g + b > 714 && hi - lo < 18) paper[p] = 1;
   }
-  for (let y = 0; y < h; y += 1) stack.push(y * w, y * w + w - 1);
-  while (stack.length > 0) {
-    const p = stack.pop();
-    if (p === undefined || seen[p]) continue;
-    seen[p] = 1;
-    const i = p * 4;
-    if (!paperAt(i)) continue;
-    data[i + 3] = 0;
-    const x = p % w;
-    const y = (p / w) | 0;
-    if (x > 0) stack.push(p - 1);
-    if (x + 1 < w) stack.push(p + 1);
-    if (y > 0) stack.push(p - w);
-    if (y + 1 < h) stack.push(p + w);
+  const seen = new Uint8Array(total);
+  const stack = new Int32Array(total);
+  let top = 0;
+  const flood = (start: number, limit: number, clear: boolean, region: Int32Array | null) => {
+    top = 0;
+    stack[top++] = start;
+    seen[start] = 1;
+    let count = 0;
+    while (top > 0) {
+      const p = stack[--top];
+      if (region && count < limit) region[count] = p;
+      count += 1;
+      if (clear) data[p * 4 + 3] = 0;
+      const x = p % w;
+      if (x > 0 && !seen[p - 1] && paper[p - 1]) { seen[p - 1] = 1; stack[top++] = p - 1; }
+      if (x + 1 < w && !seen[p + 1] && paper[p + 1]) { seen[p + 1] = 1; stack[top++] = p + 1; }
+      if (p >= w && !seen[p - w] && paper[p - w]) { seen[p - w] = 1; stack[top++] = p - w; }
+      if (p + w < total && !seen[p + w] && paper[p + w]) { seen[p + w] = 1; stack[top++] = p + w; }
+    }
+    return count;
+  };
+  // Paper reached from the border is background.
+  for (let x = 0; x < w; x += 1) {
+    if (paper[x] && !seen[x]) flood(x, 0, true, null);
+    const q = (h - 1) * w + x;
+    if (paper[q] && !seen[q]) flood(q, 0, true, null);
+  }
+  for (let y = 0; y < h; y += 1) {
+    const q0 = y * w;
+    const q1 = y * w + w - 1;
+    if (paper[q0] && !seen[q0]) flood(q0, 0, true, null);
+    if (paper[q1] && !seen[q1]) flood(q1, 0, true, null);
   }
   // Small closed paper areas (the inside of letters like o, b, g) are background too.
-  const smallHole = Math.max(16, Math.round(w * h * 0.004));
-  const region: number[] = [];
-  for (let start = 0; start < w * h; start += 1) {
-    if (seen[start] || !paperAt(start * 4)) continue;
-    region.length = 0;
-    stack.push(start);
-    seen[start] = 1;
-    let big = false;
-    while (stack.length > 0) {
-      const p = stack.pop() as number;
-      if (!big) region.push(p);
-      if (region.length > smallHole) big = true;
-      const x = p % w;
-      const y = (p / w) | 0;
-      const next = [x > 0 ? p - 1 : -1, x + 1 < w ? p + 1 : -1, y > 0 ? p - w : -1, y + 1 < h ? p + w : -1];
-      for (const q of next) {
-        if (q < 0 || seen[q] || !paperAt(q * 4)) continue;
-        seen[q] = 1;
-        stack.push(q);
-      }
-    }
-    if (!big) for (const p of region) data[p * 4 + 3] = 0;
+  const smallHole = Math.max(16, Math.round(total * 0.004));
+  const region = new Int32Array(smallHole + 1);
+  for (let p = 0; p < total; p += 1) {
+    if (seen[p] || !paper[p]) continue;
+    const count = flood(p, smallHole + 1, false, region);
+    if (count <= smallHole) for (let k = 0; k < count; k += 1) data[region[k] * 4 + 3] = 0;
   }
   // Anti-aliased edges next to removed paper: take the white out of them (colour to alpha),
   // so a logo on a coloured cup has no pale outline.
-  for (let p = 0; p < w * h; p += 1) {
+  for (let p = 0; p < total; p += 1) {
     const i = p * 4;
     if (data[i + 3] < 16) continue;
     const x = p % w;
-    const y = (p / w) | 0;
     const nearClear =
-      (x > 0 && data[i - 4 + 3] === 0) || (x + 1 < w && data[i + 4 + 3] === 0) || (y > 0 && data[i - w * 4 + 3] === 0) || (y + 1 < h && data[i + w * 4 + 3] === 0);
+      (x > 0 && data[i - 4 + 3] === 0) || (x + 1 < w && data[i + 4 + 3] === 0) || (p >= w && data[i - w * 4 + 3] === 0) || (p + w < total && data[i + w * 4 + 3] === 0);
     if (!nearClear) continue;
     const a = Math.max(255 - data[i], 255 - data[i + 1], 255 - data[i + 2]) / 255;
     if (a <= 0.02) {

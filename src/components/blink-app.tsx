@@ -255,6 +255,7 @@ export function BlinkApp() {
   const baseLabels = useMemo(() => {
     const phrase = draft.phrase.trim();
     if (!area || (!art && !pattern && !phrase) || typeof document === "undefined") return null;
+    return cachedLabels([art, pattern], `${area.w}x${area.h}/${area.rim ?? ""}/${process}/${draft.font}/${phrase}`, () => {
     const family = fontCss(draft.font);
     const ppm = Math.min(12, Math.max(8, Math.round(1800 / area.w)));
     const probe = paintLabel({
@@ -297,6 +298,7 @@ export function BlinkApp() {
       });
     }
     return map;
+    });
   }, [area, art, pattern, process, draft.phrase, draft.font]);
 
   const labels = useMemo(() => {
@@ -385,6 +387,7 @@ export function BlinkApp() {
     const image = rightArt;
     const motif = rightPattern;
     if (!otherArea || (!image && !motif && !phrase) || typeof document === "undefined") return null;
+    return cachedLabels([image, motif], `${otherArea.w}x${otherArea.h}/${otherArea.rim ?? ""}/${otherProcess}/${right.font}/${phrase}`, () => {
     const family = fontCss(right.font);
     const ppm = Math.min(12, Math.max(8, Math.round(1800 / otherArea.w)));
     const probe = paintLabel({
@@ -427,6 +430,7 @@ export function BlinkApp() {
       });
     }
     return map;
+    });
   }, [otherArea, rightArt, rightPattern, right.phrase, right.font, otherProcess]);
   const rightLabels = useMemo(() => {
     if (!rightBase) return null;
@@ -1318,6 +1322,39 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
       <span className="mt-1 block">{children}</span>
     </label>
   );
+}
+
+/**
+ * Sample labels are costly to paint (seven full-size canvases); switching process or cup and
+ * back reuses them instead of painting them again.
+ */
+const labelCache = new Map<string, Record<SampleId, HTMLCanvasElement>>();
+const objectIds = new WeakMap<object, number>();
+let nextObjectId = 1;
+function cachedLabels(parts: (object | null)[], key: string, build: () => Record<SampleId, HTMLCanvasElement>): Record<SampleId, HTMLCanvasElement> {
+  const ids = parts.map((part) => {
+    if (!part) return 0;
+    let id = objectIds.get(part);
+    if (!id) {
+      id = nextObjectId++;
+      objectIds.set(part, id);
+    }
+    return id;
+  });
+  const full = `${ids.join(",")}|${key}`;
+  const hit = labelCache.get(full);
+  if (hit) {
+    labelCache.delete(full);
+    labelCache.set(full, hit);
+    return hit;
+  }
+  const made = build();
+  labelCache.set(full, made);
+  if (labelCache.size > 8) {
+    const oldest = labelCache.keys().next().value;
+    if (oldest !== undefined) labelCache.delete(oldest);
+  }
+  return made;
 }
 
 /** The print window as it is printed (same copies and sizes as on the 3D cup), with its real size in mm. */
