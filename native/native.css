@@ -1,0 +1,24 @@
+/* Native shell only (html.native). Capacitor 8 injects --safe-area-inset-* on
+   Android WebViews whose env() still reports 0; iOS WKWebView fills env(). */
+html.native {
+  --sa-top: max(env(safe-area-inset-top), var(--safe-area-inset-top, 0px));
+  --sa-right: max(env(safe-area-inset-right), var(--safe-area-inset-right, 0px));
+  --sa-bottom: max(env(safe-area-inset-bottom), var(--safe-area-inset-bottom, 0px));
+  --sa-left: max(env(safe-area-inset-left), var(--safe-area-inset-left, 0px));
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
+}
+html.native body {
+  padding-left: var(--sa-left);
+  padding-right: var(--sa-right);
+  -webkit-text-size-adjust: 100%;
+}
+html.native #root > main {
+  padding-top: max(1.25rem, var(--sa-top)) !important;
+  padding-bottom: max(4rem, var(--sa-bottom)) !important;
+}
+/* Overlays (zoom, Pantone, ficha) stay clear of the notch and home bar. */
+html.native .fixed.inset-0 {
+  padding-top: max(1rem, var(--sa-top));
+  padding-bottom: max(1rem, var(--sa-bottom));
+}

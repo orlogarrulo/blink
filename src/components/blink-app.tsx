@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { CupView, cupStills } from "@/components/cup-view";
 import { OtherColorDialog } from "@/components/other-color-dialog";
 import { Lineup } from "@/components/lineup";
@@ -25,6 +25,7 @@ import { canvasPdf, cmyk, composeLogos, composePattern, dominantColors, download
 import { BOX_CUPS, airFreight, chargedQty, SHEET_KZ_PER_EUR, cupWeightScale } from "@/lib/freight";
 import { dialForMarket, detectMarket, KZ_PER_EUR, pricePair, type Market } from "@/lib/money";
 import { DIALS } from "@/lib/phone";
+import { NATIVE_BACK_EVENT, nativeBridge } from "@/lib/native-bridge";
 import { rasterizeSvg, traceCanvas } from "@/lib/trace";
 
 type SampleId = "medida" | "cheio" | "margem" | "faixa" | "alto" | "chapado" | "vetor";
@@ -181,6 +182,19 @@ export function BlinkApp() {
   const [soloCard, setSoloCard] = useState<"beer" | "soda" | null>(null);
   const [gridTarget, setGridTarget] = useState<"cup1" | "cup2">("cup1");
   const [pantoneModal, setPantoneModal] = useState<{ hex: string; type: "logo" | "cup" } | null>(null);
+  // Android back button (native app only): close the open overlay first.
+  useEffect(() => {
+    const onBack = (event: Event) => {
+      if (pantoneModal) setPantoneModal(null);
+      else if (zoomedCup) setZoomedCup(null);
+      else if (soloCard) setSoloCard(null);
+      else if (colorDialog) setColorDialog(null);
+      else return;
+      event.preventDefault();
+    };
+    window.addEventListener(NATIVE_BACK_EVENT, onBack);
+    return () => window.removeEventListener(NATIVE_BACK_EVENT, onBack);
+  }, [pantoneModal, zoomedCup, soloCard, colorDialog]);
   const clickGate = useRef<{ key: string; timer: number } | null>(null);
   function armClick(key: string, single: () => void, double: () => void) {
     if (clickGate.current?.key === key) {
@@ -355,7 +369,18 @@ export function BlinkApp() {
     patch({ cupId: id, process: nextAllowed.includes(draft.process) ? draft.process : nextAllowed[0] });
   }
 
-  async function onFiles(list: FileList | null, role: "logo" | "pattern", side: "beer" | "soda") {
+  /** In the native app the same upload labels open the system chooser (camera, gallery, files). */
+  function nativePick(event: ReactMouseEvent<HTMLLabelElement>, role: "logo" | "pattern", side: "beer" | "soda") {
+    const native = nativeBridge();
+    if (!native) return;
+    event.preventDefault();
+    void native
+      .pickFiles("application/pdf,image/png,image/jpeg,image/webp,image/svg+xml", true)
+      .then((files) => onFiles(files, role, side))
+      .catch(() => setError(t.fileError));
+  }
+
+  async function onFiles(list: FileList | File[] | null, role: "logo" | "pattern", side: "beer" | "soda") {
     if (!list || list.length === 0) return;
     setError("");
     try {
@@ -851,8 +876,8 @@ export function BlinkApp() {
                     ) : null}
                   </div>
                   <div className="mt-2 grid grid-cols-2 gap-1">
-                    <label className="flex min-h-11 cursor-pointer items-center justify-center rounded-xl border border-dashed border-line px-1 text-center text-xs">{t.logo}<input className="sr-only" type="file" multiple accept="application/pdf,image/png,image/jpeg,image/webp,image/svg+xml" onChange={(event) => { void onFiles(event.target.files, "logo", "beer"); event.target.value = ""; }} /></label>
-                    <label className="flex min-h-11 cursor-pointer items-center justify-center rounded-xl border border-dashed border-line px-1 text-center text-xs">{t.pattern}<input className="sr-only" type="file" multiple accept="application/pdf,image/png,image/jpeg,image/webp,image/svg+xml" onChange={(event) => { void onFiles(event.target.files, "pattern", "beer"); event.target.value = ""; }} /></label>
+                    <label onClick={(event) => nativePick(event, "logo", "beer")} className="flex min-h-11 cursor-pointer items-center justify-center rounded-xl border border-dashed border-line px-1 text-center text-xs">{t.logo}<input className="sr-only" type="file" multiple accept="application/pdf,image/png,image/jpeg,image/webp,image/svg+xml" onChange={(event) => { void onFiles(event.target.files, "logo", "beer"); event.target.value = ""; }} /></label>
+                    <label onClick={(event) => nativePick(event, "pattern", "beer")} className="flex min-h-11 cursor-pointer items-center justify-center rounded-xl border border-dashed border-line px-1 text-center text-xs">{t.pattern}<input className="sr-only" type="file" multiple accept="application/pdf,image/png,image/jpeg,image/webp,image/svg+xml" onChange={(event) => { void onFiles(event.target.files, "pattern", "beer"); event.target.value = ""; }} /></label>
                   </div>
                   <div className="mt-1 grid grid-cols-2 gap-1">
                     <button type="button" className={`min-h-11 rounded-xl border px-1 text-xs ${liquid === "beer" ? "border-ink bg-amber-50" : "border-line"}`} onClick={() => setLiquid(liquid === "beer" ? "none" : "beer")}>Cerveja</button>
@@ -927,8 +952,8 @@ export function BlinkApp() {
                     ) : null}
                   </div>
                   <div className="mt-2 grid grid-cols-2 gap-1">
-                    <label className="flex min-h-11 cursor-pointer items-center justify-center rounded-xl border border-dashed border-line px-1 text-center text-xs">{t.logo}<input className="sr-only" type="file" multiple accept="application/pdf,image/png,image/jpeg,image/webp,image/svg+xml" onChange={(event) => { void onFiles(event.target.files, "logo", "soda"); event.target.value = ""; }} /></label>
-                    <label className="flex min-h-11 cursor-pointer items-center justify-center rounded-xl border border-dashed border-line px-1 text-center text-xs">{t.pattern}<input className="sr-only" type="file" multiple accept="application/pdf,image/png,image/jpeg,image/webp,image/svg+xml" onChange={(event) => { void onFiles(event.target.files, "pattern", "soda"); event.target.value = ""; }} /></label>
+                    <label onClick={(event) => nativePick(event, "logo", "soda")} className="flex min-h-11 cursor-pointer items-center justify-center rounded-xl border border-dashed border-line px-1 text-center text-xs">{t.logo}<input className="sr-only" type="file" multiple accept="application/pdf,image/png,image/jpeg,image/webp,image/svg+xml" onChange={(event) => { void onFiles(event.target.files, "logo", "soda"); event.target.value = ""; }} /></label>
+                    <label onClick={(event) => nativePick(event, "pattern", "soda")} className="flex min-h-11 cursor-pointer items-center justify-center rounded-xl border border-dashed border-line px-1 text-center text-xs">{t.pattern}<input className="sr-only" type="file" multiple accept="application/pdf,image/png,image/jpeg,image/webp,image/svg+xml" onChange={(event) => { void onFiles(event.target.files, "pattern", "soda"); event.target.value = ""; }} /></label>
                   </div>
                   <div className="mt-1 grid grid-cols-2 gap-1">
                     <button type="button" className={`min-h-11 rounded-xl border px-1 text-xs ${rightLiquid === "beer" ? "border-ink bg-amber-50" : "border-line"}`} onClick={() => setRightLiquid(rightLiquid === "beer" ? "none" : "beer")}>Cerveja</button>

@@ -1,0 +1,4 @@
+{
+  "extends": "./tsconfig.json",
+  "include": ["native", "src", "capacitor.config.ts", "vite.native.config.ts"]
+}

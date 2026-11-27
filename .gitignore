@@ -11,3 +11,11 @@ hero*
 spin*
 cmp
 details
+
+# Capacitor web bundle (npm run build:native)
+/www
+
+# Android signing keys (private)
+*.jks
+*.keystore
+android/keystore.properties

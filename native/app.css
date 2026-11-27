@@ -1,0 +1,4 @@
+/* Same stylesheet as the website + native-only safe-area rules. */
+@import "../src/styles.css";
+@import "./native.css";
+@source "../src";

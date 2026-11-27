@@ -1,6 +1,7 @@
 import type { Area, Cup, Process } from "@/lib/catalog";
 import { printWindow, setPrintMeta, type CupShape } from "@/lib/print-meta";
 import { PROCESS_LABEL, freightMode, priceFor, productionDays, freightDays } from "@/lib/catalog";
+import { nativeBridge } from "@/lib/native-bridge";
 
 export function hexToRgb(hex: string): [number, number, number] {
   const h = hex.replace("#", "");
@@ -860,7 +861,12 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
   ctx.closePath();
 }
 
-export function openPdf(blob: Blob) {
+export function openPdf(blob: Blob, name = "blink.pdf") {
+  const native = nativeBridge();
+  if (native) {
+    void native.saveFile(blob, name).catch((error) => console.error("[blink] PDF share failed", error));
+    return;
+  }
   const url = URL.createObjectURL(blob);
   const opened = window.open(url, "_blank", "noopener");
   if (!opened) {
@@ -937,6 +943,11 @@ export function canvasPdf(input: HTMLCanvasElement | HTMLCanvasElement[]): Blob 
 }
 
 export function downloadBlob(blob: Blob, name: string) {
+  const native = nativeBridge();
+  if (native) {
+    void native.saveFile(blob, name).catch((error) => console.error("[blink] file share failed", error));
+    return;
+  }
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
