@@ -621,8 +621,8 @@ export function BlinkApp() {
       body,
       liquid: side === "beer" ? liquid : rightLiquid,
     };
-    // The upside-down view cannot hold a drink, so it is drawn empty.
-    const solid = [...cupStills(stillSpec, [0, Math.PI * 0.28]), ...cupStills({ ...stillSpec, liquid: "none" }, [Math.PI])];
+    // The upside-down view cannot hold a drink and has no table shadow above it, so it is drawn empty and unshadowed.
+    const solid = [...cupStills(stillSpec, [0, Math.PI * 0.28]), ...cupStills({ ...stillSpec, liquid: "none", shadow: false }, [Math.PI])];
     const viewLabels = ["Frente", "Três quartos", "Lado / invertido"];
     // The third view is upside down (mouth facing down, as if on a table); viewsSheet keeps it aligned.
     const views = viewsSheet(item.name, viewLabels, solid, [false, false, true]);

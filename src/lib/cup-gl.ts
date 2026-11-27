@@ -20,6 +20,8 @@ export type CupScene = {
   liquid?: "none" | "beer" | "soda";
   /** Seconds, drives the rising bubbles (fixed for stills). */
   time?: number;
+  /** Contact shadow on the table (off for the upside-down still, where it would float above the cup). */
+  shadow?: boolean;
   area?: { w: number; h: number; rim?: number; full?: boolean } | null;
 };
 
@@ -56,6 +58,7 @@ uniform vec4 uBody;
 uniform float uLevel;
 uniform float uFoamTop;
 uniform float uTime;
+uniform float uShadow;
 
 const float PI = 3.14159265;
 
@@ -178,6 +181,7 @@ vec4 interior(vec3 P, vec3 D) {
   float side = abs(P.x) / max(1.0, rAt(y));
   c -= 0.05 * side * side;
   vec3 col = vec3(c, c + 0.004, c + 0.01);
+  if (uBody.a > 0.0) col = uBody.rgb * (0.62 + 0.25 * (y / uH)) * (1.0 - 0.15 * side * side);
 #ifdef DRINK
   if (P.y < uFoamTop && P.y > 5.0) col = P.y < uLevel ? (LIQ == 1 ? vec3(0.80, 0.50, 0.12) : vec3(0.10, 0.04, 0.025)) : (LIQ == 1 ? vec3(0.95, 0.92, 0.85) : vec3(0.5, 0.38, 0.3));
 #endif
@@ -208,7 +212,7 @@ void main() {
   if (tg > 0.0) {
     vec3 G = O + tg * D;
     float rr = length(vec2(G.x * 0.92, G.z - uRb * 0.12));
-    float sh = 0.13 * (1.0 - smoothstep(uRb * 0.70, uRb * 1.32, rr));
+    float sh = 0.13 * uShadow * (1.0 - smoothstep(uRb * 0.70, uRb * 1.32, rr));
     vec3 shc = LIQ == 1 && uBody.a == 0.0 ? vec3(0.50, 0.43, 0.30) : vec3(0.42, 0.44, 0.46);
     color = vec4(shc * sh, sh);
   }
@@ -313,13 +317,18 @@ void main() {
 #endif
     vec4 wall = over(vec4(frostC * frostA, frostA), back);
 
-    // A coloured cup: the colour covers the whole wall, from just under the lip to the foot.
+    // A coloured cup is moulded in coloured polypropylene: the colour runs from the rim down
+    // through the thick foot, with the foot a little deeper and a soft step where it starts.
     if (uBody.a > 0.0) {
-      float bodyMask = smoothstep(4.6, 5.6, y) * (1.0 - smoothstep(uH - 3.0, uH - 2.2, y));
       float litB = 0.875 + 0.10 * pow(ndv, 0.6) - 0.07 * smoothstep(0.5, 0.95, edge);
-      vec3 bodyRgb = uBody.rgb * litB + 0.055 * exp(-pow((xs + 0.46) / 0.12, 2.0));
+      vec3 bodyRgb = uBody.rgb * litB;
+      bodyRgb *= mix(0.82, 1.0, smoothstep(0.4, 4.6, y));
+      bodyRgb += uBody.rgb * 0.07 * exp(-pow((y - 4.9) / 0.35, 2.0));
+      bodyRgb *= 1.0 - 0.10 * exp(-pow(y / 0.45, 2.0));
+      bodyRgb += 0.055 * exp(-pow((xs + 0.46) / 0.12, 2.0));
+      bodyRgb += 0.035 * exp(-pow((y - (uH - 0.9)) / 0.6, 2.0));
       if (wet > 0.0) bodyRgb *= LIQ == 1 ? 0.97 : 0.94;
-      wall = over(vec4(bodyRgb, 1.0) * bodyMask, wall);
+      wall = vec4(bodyRgb, 1.0);
     }
 
 
@@ -369,7 +378,8 @@ void main() {
   if (onRing > 0.0 && D.y < 0.0) {
     float ang = atan(PT.x, PT.z);
     float rc = 0.78 + 0.05 * cos(ang);
-    color = mix(color, vec4(vec3(rc, rc + 0.003, rc + 0.007), 1.0), onRing);
+    vec3 ringC = uBody.a > 0.0 ? uBody.rgb * (0.86 + 0.06 * cos(ang)) : vec3(rc, rc + 0.003, rc + 0.007);
+    color = mix(color, vec4(ringC, 1.0), onRing);
   }
 
   outColor = color;
@@ -394,7 +404,7 @@ const textures = new WeakMap<HTMLCanvasElement, WebGLTexture>();
 const recent: HTMLCanvasElement[] = [];
 const MAX_TEXTURES = 28;
 
-const UNIFORMS = ["uRes", "uO", "uS", "uCam", "uRight", "uUp", "uFwd", "uRt", "uRb", "uH", "uTurn", "uTex", "uHasTex", "uBand0", "uBandH", "uSpan", "uStart", "uFull", "uBody", "uLevel", "uFoamTop", "uTime"];
+const UNIFORMS = ["uRes", "uO", "uS", "uCam", "uRight", "uUp", "uFwd", "uRt", "uRb", "uH", "uTurn", "uTex", "uHasTex", "uBand0", "uBandH", "uSpan", "uStart", "uFull", "uBody", "uLevel", "uFoamTop", "uTime", "uShadow"];
 
 function buildProgram(gl: WebGL2RenderingContext, liquid: number): Prog {
   const compile = (type: number, src: string) => {
@@ -643,6 +653,7 @@ export function renderCupGL(ctx: CanvasRenderingContext2D, w: number, h: number,
   gl.uniform1f(loc.uLevel, fill.level);
   gl.uniform1f(loc.uFoamTop, fill.foamTop);
   gl.uniform1f(loc.uTime, scene.time ?? 4.2);
+  gl.uniform1f(loc.uShadow, scene.shadow === false ? 0 : 1);
   gl.activeTexture(gl.TEXTURE0);
   let hasTex = 0;
   if (scene.texture && scene.texture.width > 1 && scene.texture.height > 1) {
