@@ -1087,6 +1087,138 @@ export function isLogoLike(image: HTMLCanvasElement): boolean {
   return result;
 }
 
+/**
+ * A frame/background: filled coloured borders, a large empty/light centre, typically
+ * not a seamless tile. Drawn once around the cup (cover-fit, no tiling, no mirroring)
+ * so the borders sit at the rim and the foot and the centre stays free for the logo.
+ */
+const frameLikeCache = new WeakMap<HTMLCanvasElement, boolean>();
+export function isFrameLike(image: HTMLCanvasElement): boolean {
+  const known = frameLikeCache.get(image);
+  if (known !== undefined) return known;
+  if (isLogoLike(image)) {
+    frameLikeCache.set(image, false);
+    return false;
+  }
+  const w = Math.min(200, image.width);
+  const h = Math.max(2, Math.round(w * (image.height / Math.max(1, image.width))));
+  const probe = document.createElement("canvas");
+  probe.width = w;
+  probe.height = h;
+  const pctx = probe.getContext("2d", { willReadFrequently: true });
+  let result = false;
+  if (pctx) {
+    pctx.drawImage(image, 0, 0, w, h);
+    const data = pctx.getImageData(0, 0, w, h).data;
+    const empty = (x: number, y: number) => {
+      const i = (y * w + x) * 4;
+      if (data[i + 3] < 24) return true;
+      const light = (data[i] + data[i + 1] + data[i + 2]) / 3;
+      const chroma = Math.max(data[i], data[i + 1], data[i + 2]) - Math.min(data[i], data[i + 1], data[i + 2]);
+      return light > 230 && chroma < 28;
+    };
+    const lumAt = (x: number, y: number) => {
+      const i = (y * w + x) * 4;
+      return (data[i] + data[i + 1] + data[i + 2]) / 3;
+    };
+    const bandFill = (y0: number, y1: number) => {
+      let n = 0, filled = 0;
+      for (let y = y0; y < y1; y += 1) {
+        for (let x = 0; x < w; x += 1) {
+          n += 1;
+          if (!empty(x, y)) filled += 1;
+        }
+      }
+      return filled / Math.max(1, n);
+    };
+    const x0 = Math.floor(w * 0.2);
+    const x1 = Math.ceil(w * 0.8);
+    const y0 = Math.floor(h * 0.22);
+    const y1 = Math.ceil(h * 0.78);
+    let centerEmpty = 0, centerN = 0, centerLum = 0;
+    for (let y = y0; y < y1; y += 1) {
+      for (let x = x0; x < x1; x += 1) {
+        centerN += 1;
+        if (empty(x, y)) centerEmpty += 1;
+        centerLum += lumAt(x, y);
+      }
+    }
+    centerEmpty /= Math.max(1, centerN);
+    centerLum /= Math.max(1, centerN);
+    const rim = Math.max(2, Math.round(h * 0.14));
+    const topFill = bandFill(0, rim);
+    const botFill = bandFill(h - rim, h);
+    result = centerEmpty >= 0.7 && centerLum > 200 && topFill >= 0.5 && botFill >= 0.5;
+  }
+  frameLikeCache.set(image, result);
+  return result;
+}
+
+/** Cover-fit `image` onto W×H once. If `rollSeam`, the calmest vertical cut becomes the left/right (back) seam. */
+function drawFrameOnce(ctx: CanvasRenderingContext2D, image: HTMLCanvasElement, W: number, H: number, rollSeam: boolean) {
+  const scale = Math.max(W / Math.max(1, image.width), H / Math.max(1, image.height));
+  const dw = image.width * scale;
+  const dh = image.height * scale;
+  const ox = (W - dw) / 2;
+  const oy = (H - dh) / 2;
+  const tmp = document.createElement("canvas");
+  tmp.width = W;
+  tmp.height = H;
+  const tctx = tmp.getContext("2d");
+  if (!tctx) return;
+  tctx.imageSmoothingEnabled = true;
+  tctx.imageSmoothingQuality = "high";
+  tctx.drawImage(image, ox, oy, dw, dh);
+  const shift = rollSeam ? calmestSeamShift(tmp) : 0;
+  if (!shift) {
+    ctx.drawImage(tmp, 0, 0);
+    return;
+  }
+  ctx.drawImage(tmp, -shift, 0);
+  ctx.drawImage(tmp, W - shift, 0);
+}
+
+/** Horizontal shift (px) that puts the least colourful discontinuity at the canvas edges. */
+function calmestSeamShift(image: HTMLCanvasElement): number {
+  const w = image.width;
+  const h = image.height;
+  const probeW = Math.min(256, w);
+  const probeH = Math.max(2, Math.round(h * (probeW / Math.max(1, w))));
+  const probe = document.createElement("canvas");
+  probe.width = probeW;
+  probe.height = probeH;
+  const pctx = probe.getContext("2d", { willReadFrequently: true });
+  if (!pctx) return 0;
+  pctx.drawImage(image, 0, 0, probeW, probeH);
+  const data = pctx.getImageData(0, 0, probeW, probeH).data;
+  const cost = (x0: number) => {
+    const a = (x0 + probeW - 1) % probeW;
+    const b = x0;
+    let sum = 0;
+    for (let y = 0; y < probeH; y += 1) {
+      const i = (y * probeW + a) * 4;
+      const j = (y * probeW + b) * 4;
+      const dr = data[i] - data[j];
+      const dg = data[i + 1] - data[j + 1];
+      const db = data[i + 2] - data[j + 2];
+      const chromaA = Math.max(data[i], data[i + 1], data[i + 2]) - Math.min(data[i], data[i + 1], data[i + 2]);
+      const chromaB = Math.max(data[j], data[j + 1], data[j + 2]) - Math.min(data[j], data[j + 1], data[j + 2]);
+      sum += Math.hypot(dr, dg, db) * (1 + Math.max(chromaA, chromaB) / 64);
+    }
+    return sum;
+  };
+  let best = 0;
+  let bestCost = Infinity;
+  for (let x = 0; x < probeW; x += 1) {
+    const c = cost(x);
+    if (c < bestCost) {
+      bestCost = c;
+      best = x;
+    }
+  }
+  return Math.round((best / probeW) * w);
+}
+
 /** Transparent copy of a logo-like image: white paper around the mark removed. */
 function logoStamp(image: HTMLCanvasElement): HTMLCanvasElement {
   const canvas = document.createElement("canvas");
@@ -1112,8 +1244,10 @@ function composeMouldPrint(source: HTMLCanvasElement | null, motif: HTMLCanvasEl
   // A logo uploaded as a "pattern" is placed like a logo, not tiled.
   const motifLogo = motif && isLogoLike(motif) ? logoStamp(motif) : null;
   const texture = motifLogo ? null : motif;
-  // A texture always runs all the way round so its two edges meet.
-  const win = printWindow(options.cup, options.area, Boolean(texture));
+  const frame = Boolean(texture && isFrameLike(texture));
+  // A repeating texture wraps the full circumference so its edges meet. A frame is drawn
+  // once; on a short window the official gap stays at the back and hides the seam.
+  const win = printWindow(options.cup, options.area, Boolean(texture) && !frame);
   const ppmMax = options.ppm ?? 12;
   let ppm = Math.min(ppmMax, 4096 / win.widthMm, 4096 / win.bandH);
   let H = Math.max(8, Math.round(win.bandH * ppm));
@@ -1125,7 +1259,7 @@ function composeMouldPrint(source: HTMLCanvasElement | null, motif: HTMLCanvasEl
   let tileW = 0;
   let tileH = 0;
   let cols = 0;
-  if (texture) {
+  if (texture && !frame) {
     const aspect = Math.max(1, texture.width) / Math.max(1, texture.height);
     const rows = Math.max(1, Math.round(win.bandH / Math.min(win.bandH, Math.max(30, win.bandH * 0.5))));
     const wantH = win.bandH / rows;
@@ -1149,7 +1283,9 @@ function composeMouldPrint(source: HTMLCanvasElement | null, motif: HTMLCanvasEl
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
 
-  if (texture) {
+  if (texture && frame) {
+    drawFrameOnce(ctx, texture, W, H, win.full);
+  } else if (texture) {
     // One exact tile, then repeat it with a pattern fill: no overlaps, no gaps.
     const tile = document.createElement("canvas");
     tile.width = tileW;
