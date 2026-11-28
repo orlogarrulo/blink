@@ -10,11 +10,17 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as GestaoRouteImport } from './routes/gestao'
 import { Route as VerRouteImport } from './routes/ver'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GestaoRoute = GestaoRouteImport.update({
+  id: '/gestao',
+  path: '/gestao',
   getParentRoute: () => rootRouteImport,
 } as any)
 const VerRoute = VerRouteImport.update({
@@ -25,27 +31,31 @@ const VerRoute = VerRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/gestao': typeof GestaoRoute
   '/ver': typeof VerRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/gestao': typeof GestaoRoute
   '/ver': typeof VerRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/gestao': typeof GestaoRoute
   '/ver': typeof VerRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/ver'
+  fullPaths: '/' | '/gestao' | '/ver'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/ver'
-  id: '__root__' | '/' | '/ver'
+  to: '/' | '/gestao' | '/ver'
+  id: '__root__' | '/' | '/gestao' | '/ver'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  GestaoRoute: typeof GestaoRoute
   VerRoute: typeof VerRoute
 }
 
@@ -56,6 +66,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/gestao': {
+      id: '/gestao'
+      path: '/gestao'
+      fullPath: '/gestao'
+      preLoaderRoute: typeof GestaoRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/ver': {
@@ -70,6 +87,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  GestaoRoute: GestaoRoute,
   VerRoute: VerRoute,
 }
 export const routeTree = rootRouteImport

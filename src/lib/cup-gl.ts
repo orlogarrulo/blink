@@ -9,6 +9,7 @@
  * height, so it widens toward the mouth like an IML label does.
  */
 import { printMetaOf, printWindow, topMarginMm, type PrintMeta } from "@/lib/print-meta";
+import { bodyUniforms } from "@/lib/body-color";
 
 export type CupScene = {
   texture: HTMLCanvasElement | null;
@@ -56,6 +57,10 @@ uniform float uSpan;
 uniform float uStart;
 uniform int uFull;
 uniform vec4 uBody;
+// Body mix: up to 4 colours, rim side first. uBodyN = how many (1 = plain colour), uBodyMode 0 = degradê, 1 = faixas.
+uniform vec3 uBodyC[4];
+uniform float uBodyN;
+uniform float uBodyMode;
 #ifndef LIQ
 #define LIQ 0
 #endif
@@ -92,6 +97,27 @@ vec3 blinkLight(vec3 albedo, vec3 N, vec3 V) {
 vec4 over(vec4 top, vec4 bot) { return top + bot * (1.0 - top.a); }
 
 float rAt(float y) { return uRb + (uRt - uRb) * y / uH; }
+
+// Body colour at height y (mm from the base). Colours run from just under the unprinted rim band down to the foot.
+vec3 bodyAt(float y) {
+  if (uBodyN < 1.5) return uBody.rgb;
+  float sl = sqrt(uH * uH + (uRt - uRb) * (uRt - uRb)) / uH;
+  float total = uH * sl;
+  float t = clamp(((uH - y) * sl - uBand0) / max(1.0, total - uBand0), 0.0, 1.0);
+  if (uBodyMode > 0.5) {
+    // Equal bands with a soft 0.6 mm join, so the edge between two colours is not jagged.
+    float f = t * uBodyN;
+    int i = int(min(uBodyN - 1.0, floor(f)));
+    float seg = max(1.0, (total - uBand0) / uBodyN);
+    float fr = f - float(i);
+    float soft = 0.6 / seg;
+    if (float(i) < uBodyN - 1.0 && fr > 1.0 - soft) return mix(uBodyC[i], uBodyC[i + 1], smoothstep(1.0 - soft, 1.0, fr));
+    return uBodyC[i];
+  }
+  float f = t * (uBodyN - 1.0);
+  int i = int(min(uBodyN - 2.0, floor(f)));
+  return mix(uBodyC[i], uBodyC[i + 1], clamp(f - float(i), 0.0, 1.0));
+}
 
 #ifdef DRINK
 float hash12(vec2 p) {
@@ -217,7 +243,7 @@ vec4 interior(vec3 P, vec3 D) {
   c -= 0.05 * side * side;
   vec3 col = vec3(c, c + 0.004, c + 0.01);
   if (uBody.a > 0.0) {
-    vec3 tinted = uBody.rgb * (0.62 + 0.25 * (y / uH)) * (1.0 - 0.15 * side * side);
+    vec3 tinted = bodyAt(y) * (0.62 + 0.25 * (y / uH)) * (1.0 - 0.15 * side * side);
     float slantIn = sqrt(uH * uH + (uRt - uRb) * (uRt - uRb)) / uH;
     float fromRim = (uH - y) * slantIn;
     // Inside of the lip stays natural PP; colour starts below the unprinted band.
@@ -377,9 +403,10 @@ void main() {
     // A coloured cup is moulded in coloured polypropylene from just under the
     // unprinted rim band down through the thick foot. The mouth stays natural PP.
     if (uBody.a > 0.0) {
-      vec3 bodyRgb = blinkLight(uBody.rgb, N, V);
+      vec3 bodyBase = bodyAt(y);
+      vec3 bodyRgb = blinkLight(bodyBase, N, V);
       bodyRgb *= mix(0.82, 1.0, smoothstep(0.4, 4.6, y));
-      bodyRgb += uBody.rgb * 0.06 * exp(-pow((y - 4.9) / 0.35, 2.0));
+      bodyRgb += bodyBase * 0.06 * exp(-pow((y - 4.9) / 0.35, 2.0));
       bodyRgb *= 1.0 - 0.10 * exp(-pow(y / 0.45, 2.0));
       if (wet > 0.0) bodyRgb *= LIQ == 1 ? 0.97 : 0.94;
       float fromRim = (uH - y) * slant;
@@ -403,7 +430,7 @@ void main() {
     if (win > 0.0) {
       vec4 ink = vec4(0.0);
       // A drink behind an opaque coloured wall only darkens it a touch, inside and outside the window alike.
-      if (uBody.a > 0.0) ink = vec4(uBody.rgb * (wet > 0.0 ? (LIQ == 1 ? 0.97 : 0.94) : 1.0), 1.0);
+      if (uBody.a > 0.0) ink = vec4(bodyAt(y) * (wet > 0.0 ? (LIQ == 1 ? 0.97 : 0.94) : 1.0), 1.0);
       if (uHasTex == 1) {
         vec2 uv = vec2(uFull == 1 ? fract(u) : u, clamp(v, 0.0, 1.0));
         vec2 g = vec2(thetaRaw / uSpan, v);
@@ -458,7 +485,7 @@ const textures = new WeakMap<HTMLCanvasElement, WebGLTexture>();
 const recent: HTMLCanvasElement[] = [];
 const MAX_TEXTURES = 28;
 
-const UNIFORMS = ["uRes", "uO", "uS", "uCam", "uRight", "uUp", "uFwd", "uRt", "uRb", "uH", "uTurn", "uTex", "uHasTex", "uBand0", "uBandH", "uSpan", "uStart", "uFull", "uBody", "uLevel", "uFoamTop", "uTime", "uShadow", "uStudio"];
+const UNIFORMS = ["uRes", "uO", "uS", "uCam", "uRight", "uUp", "uFwd", "uRt", "uRb", "uH", "uTurn", "uTex", "uHasTex", "uBand0", "uBandH", "uSpan", "uStart", "uFull", "uBody", "uBodyC", "uBodyN", "uBodyMode", "uLevel", "uFoamTop", "uTime", "uShadow", "uStudio"];
 
 function buildProgram(gl: WebGL2RenderingContext, liquid: number): Prog {
   const compile = (type: number, src: string) => {
@@ -702,8 +729,12 @@ export function renderCupGL(ctx: CanvasRenderingContext2D, w: number, h: number,
   gl.uniform1f(loc.uSpan, span);
   gl.uniform1f(loc.uStart, start);
   gl.uniform1i(loc.uFull, full);
-  const body = scene.body ? hexRgb(scene.body) : null;
+  const mix = bodyUniforms(scene.body);
+  const body = mix.n > 0 ? [mix.rgb[0], mix.rgb[1], mix.rgb[2]] : null;
   gl.uniform4f(loc.uBody, body ? body[0] : 0, body ? body[1] : 0, body ? body[2] : 0, body ? 1 : 0);
+  if (loc.uBodyC) gl.uniform3fv(loc.uBodyC, mix.rgb);
+  gl.uniform1f(loc.uBodyN, Math.max(1, mix.n));
+  gl.uniform1f(loc.uBodyMode, mix.mode);
   const fill = drinkLevels(H, scene.liquid ?? "none");
   gl.uniform1f(loc.uLevel, fill.level);
   gl.uniform1f(loc.uFoamTop, fill.foamTop);

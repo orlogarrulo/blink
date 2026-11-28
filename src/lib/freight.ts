@@ -1,3 +1,5 @@
+import { getKzPerEur } from "@/lib/money";
+
 // Transporte aéreo do ECO40.
 // Caixa: 400 copos, 14,3 kg, 59 × 36,7 × 29,6 cm.
 // Peso taxável = maior entre o peso real, o volumétrico (cm/6000) e 19 kg.
@@ -18,6 +20,7 @@ const AIRPORT = 20;
 const BROKER = 70;
 const DUTY = 0.3;
 const VAT = 0.14;
+/** Rate of the sheet; the live rate (editable in Gestão) comes from getKzPerEur(). */
 export const SHEET_KZ_PER_EUR = 1147;
 const REAL_12_BOXES_EUR = 1846.70188;
 
@@ -56,7 +59,7 @@ export function airFreight(qty: number, scale = 1): AirFreight | null {
   const chargeableKg = Math.max(realKg, volumeKg, MIN_KG);
   if (qty >= 4800 && Math.abs(weight - 1) < 0.001) {
     const eur = REAL_12_BOXES_EUR * (qty / 4800);
-    return { boxes, realKg, volumeKg, chargeableKg, eur, kz: eur * SHEET_KZ_PER_EUR, source: "rangel" };
+    return { boxes, realKg, volumeKg, chargeableKg, eur, kz: eur * getKzPerEur(), source: "rangel" };
   }
   const freight = chargeableKg * RATE;
   const transport = freight + SURCHARGES;
@@ -64,7 +67,7 @@ export function airFreight(qty: number, scale = 1): AirFreight | null {
   const duty = (invoice + transport) * DUTY;
   const vat = (invoice + transport + duty) * VAT;
   const eur = transport + AIRPORT + duty + vat + BROKER;
-  return { boxes, realKg, volumeKg, chargeableKg, eur, kz: eur * SHEET_KZ_PER_EUR, source: "simulacao" };
+  return { boxes, realKg, volumeKg, chargeableKg, eur, kz: eur * getKzPerEur(), source: "simulacao" };
 }
 
 function coneVolume(top: number, bot: number, height: number) {

@@ -16,10 +16,10 @@ export const FULL_COVER_RIM_MM = 4;
 const fullAreaCache = new Map<string, Area>();
 
 export function fullArea(cup: Cup): Area {
-  const cached = fullAreaCache.get(cup.id);
+  const cached = fullAreaCache.get(`${cup.id}/${cup.top}/${cup.bot}/${cup.height}`);
   if (cached) return cached;
   const area = computeFullArea(cup);
-  fullAreaCache.set(cup.id, area);
+  fullAreaCache.set(`${cup.id}/${cup.top}/${cup.bot}/${cup.height}`, area);
   return area;
 }
 
@@ -29,7 +29,8 @@ function computeFullArea(cup: Cup): Area {
   return { w: Math.round(2 * Math.PI * rMid * 10) / 10, h, rim: FULL_COVER_RIM_MM, full: true };
 }
 
-export type PriceTier = { qty: number; kz: number };
+/** One row of the price table. `eur` is the source; `kz` is eur × the current rate (see applyCatalog). */
+export type PriceTier = { qty: number; kz: number; eur?: number };
 
 export type Cup = {
   id: string;
@@ -45,6 +46,8 @@ export type Cup = {
   iml: Area | null;
   digital: Area | null;
   prices: PriceTier[];
+  /** Added in Gestão on this device (not a Re-uz catalogue model). */
+  custom?: boolean;
 };
 
 const tier = (rows: [number, number][]): PriceTier[] => rows.map(([qty, kz]) => ({ qty, kz }));
@@ -268,8 +271,46 @@ export const CUPS: Cup[] = [
   },
 ];
 
+/** The catalogue as shipped (prices from the Kz client table, read at the sheet rate of 1147 Kz/€). */
+export const SHEET_RATE = 1147;
+const toEur = (kz: number) => Math.round((kz / SHEET_RATE) * 10000) / 10000;
+export const BASE_CUPS: readonly Cup[] = CUPS.map((cup) => ({
+  ...cup,
+  prices: cup.prices.map((row) => ({ qty: row.qty, kz: row.kz, eur: toEur(row.kz) })),
+}));
+
+export type CatalogEdit = { name?: string; prices?: { qty: number; eur: number }[] };
+
+/**
+ * Rebuild CUPS in place from the shipped catalogue, the edits and additions made in Gestão, and the rate.
+ * Every Kz price is eur × rate, so a new rate moves all Kz prices at once.
+ */
+export function applyCatalog(edits: Record<string, CatalogEdit>, added: Cup[], rate: number) {
+  const next: Cup[] = [];
+  for (const base of BASE_CUPS) {
+    const edit = edits[base.id] ?? {};
+    const rows = edit.prices && edit.prices.length > 0 ? edit.prices : base.prices.map((row) => ({ qty: row.qty, eur: row.eur ?? toEur(row.kz) }));
+    next.push({
+      ...base,
+      name: edit.name?.trim() || base.name,
+      prices: rows.map((row) => ({ qty: row.qty, eur: row.eur, kz: row.eur * rate })),
+    });
+  }
+  for (const item of added) {
+    const edit = edits[item.id] ?? {};
+    const rows = edit.prices && edit.prices.length > 0 ? edit.prices : item.prices.map((row) => ({ qty: row.qty, eur: row.eur ?? 0 }));
+    next.push({
+      ...item,
+      custom: true,
+      name: edit.name?.trim() || item.name,
+      prices: rows.map((row) => ({ qty: row.qty, eur: row.eur, kz: row.eur * rate })),
+    });
+  }
+  CUPS.splice(0, CUPS.length, ...next);
+}
+
 export function cupById(id: string): Cup {
-  return CUPS.find((cup) => cup.id === id) ?? CUPS[5];
+  return CUPS.find((cup) => cup.id === id) ?? CUPS.find((cup) => cup.id === "ECO40") ?? CUPS[0];
 }
 
 export function areaFor(cup: Cup, process: Process): Area | null {

@@ -2,6 +2,7 @@ import { clampArtPlace, type ArtPlace } from "@/lib/art-place";
 import { drawBlinkWordmark } from "@/lib/brand-mark";
 import type { Area, Cup, Process } from "@/lib/catalog";
 import { printWindow, setPrintMeta, type CupShape } from "@/lib/print-meta";
+import { bodyFill, bodyLabel } from "@/lib/body-color";
 import { PROCESS_LABEL, freightMode, priceFor, productionDays, freightDays } from "@/lib/catalog";
 
 export function hexToRgb(hex: string): [number, number, number] {
@@ -171,6 +172,12 @@ export function paintLabel(options: {
   fit?: "contain" | "cover" | "band" | "height";
   place?: "medida" | "cheio" | "margem" | "faixa" | "alto" | "chapado";
   pattern?: CanvasImageSource | null;
+  /**
+   * With a logo, the phrase gets its own lane above and/or below the logo copies on the cup
+   * (drawn by wrapPrint), so the logo keeps the same size with or without text.
+   * Without a logo the phrase is the art itself and is laid out as before.
+   */
+  phraseLane?: { ink: string | null; pos: PhrasePos } | null;
 }): HTMLCanvasElement {
   const { area, ppm } = options;
   const canvas = document.createElement("canvas");
@@ -185,7 +192,11 @@ export function paintLabel(options: {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
   }
   if (options.pattern) drawCover(ctx, options.pattern, 0, 0, canvas.width, canvas.height);
-  const title = options.title.trim();
+  const lane = Boolean(options.phraseLane && options.image && options.title.trim());
+  const title = lane ? "" : options.title.trim();
+  if (lane && options.phraseLane) {
+    phraseMeta.set(canvas, { text: options.title.trim().slice(0, 60), font: options.font || "Outfit, sans-serif", ink: options.phraseLane.ink || options.ink, pos: options.phraseLane.pos });
+  }
   const place = options.place ?? "medida";
   const tune = {
     medida: { reserve: 0.26, gap: 0.04, weight: 0.42, lines: 2, stack: false },
@@ -218,9 +229,10 @@ export function paintLabel(options: {
     const y = Math.min(Math.max(0, gap + (limitH - dh) / 2 + options.shift), Math.max(0, canvas.height - reserve - dh));
     ctx.drawImage(source, (canvas.width - dw) / 2, y, dw, dh);
   }
+  if (title && !options.image) textOnly.add(canvas);
   if (title) {
     const alone = !options.image;
-    drawPhrase(ctx, title, options.font || "Outfit, sans-serif", options.ink, {
+    drawPhrase(ctx, title, options.font || "Outfit, sans-serif", (!options.image && options.phraseLane?.ink) || options.ink, {
       x: canvas.width * (place === "margem" && alone ? 0.14 : 0.06),
       y: alone ? 0 : canvas.height - reserve,
       w: canvas.width * (place === "margem" && alone ? 0.72 : 0.88),
@@ -244,6 +256,34 @@ export function paintLabel(options: {
 
 /** How big the logo is in a sample relative to "fit the window" (Com margem is smaller). */
 const labelScales = new WeakMap<HTMLCanvasElement, number>();
+
+/** Where the phrase sits next to the logo: above it (toward the rim), below it, or both. */
+export type PhrasePos = "top" | "bottom" | "both";
+export type PhraseMeta = { text: string; font: string; ink: string; pos: PhrasePos };
+
+/** Phrase that rides with a logo label and is drawn in its own lane by wrapPrint. */
+const phraseMeta = new WeakMap<HTMLCanvasElement, PhraseMeta>();
+
+export function phraseOf(label: HTMLCanvasElement | null): PhraseMeta | null {
+  return label ? phraseMeta.get(label) ?? null : null;
+}
+
+/** Keep the phrase (and logo scale) on a derived copy of a label, e.g. the traced vector sample. */
+export function carryLabelMeta(from: HTMLCanvasElement, to: HTMLCanvasElement) {
+  const meta = phraseMeta.get(from);
+  if (meta) phraseMeta.set(to, meta);
+  const scale = labelScales.get(from);
+  if (scale !== undefined) labelScales.set(to, scale);
+  if (textOnly.has(from)) textOnly.add(to);
+}
+
+/**
+ * Share of the print band height a logo copy may take. Constant, so the logo has the same size
+ * whether or not a phrase is added; the rest is the phrase lanes above and below it.
+ */
+const LOGO_BAND = 0.74;
+/** Each phrase lane: from just under the top (or above the bottom) of the band to the logo zone. */
+const LANE_EDGE = 0.015;
 
 /** Same label without the background pattern, for placing the logo over a tiled pattern. */
 const stamps = new WeakMap<HTMLCanvasElement, () => HTMLCanvasElement>();
@@ -449,6 +489,9 @@ export function tintCanvas(source: HTMLCanvasElement, hex: string, process: Proc
   const canvas = tintPixels(source, hex);
   const scaleOf = labelScales.get(source);
   if (scaleOf !== undefined) labelScales.set(canvas, scaleOf);
+  const phrase = phraseMeta.get(source);
+  if (phrase) phraseMeta.set(canvas, phrase);
+  if (textOnly.has(source)) textOnly.add(canvas);
   if (canvas !== source && stamps.has(source)) {
     let cached: HTMLCanvasElement | null = null;
     stamps.set(canvas, () => (cached ??= tintPixels(stampOf(source), hex)));
@@ -547,7 +590,7 @@ export function sheetCanvas(options: {
   ctx.fillStyle = "#fffaf3";
   ctx.fillRect(x, y, dw, dh);
   if (options.bodyColor) {
-    ctx.fillStyle = options.bodyColor;
+    ctx.fillStyle = bodyFill(ctx, options.bodyColor, y, dh) ?? "#fffaf3";
     ctx.fillRect(x, y, dw, dh);
   }
   ctx.drawImage(area, x, y, dw, dh);
@@ -574,6 +617,7 @@ export function sheetCanvas(options: {
     ["Frete", options.freightNote || `${freightMode(options.qty)}  ·  +${freightDays(options.qty)} dias`],
     ["Entrega estimada", options.delivery],
     ["Data do evento", options.eventDate || "—"],
+    ...(options.bodyColor ? [["Cor do copo", bodyLabel(options.bodyColor)]] : []),
   ];
   (options.extraRows || []).forEach((row) => rows.push(row));
   rows.forEach((row, index) => {
@@ -588,16 +632,17 @@ export function sheetCanvas(options: {
     ctx.fillText(row[1], 340, top + 28);
   });
 
+  const swatchTop = Math.max(1320, 860 + rows.length * 52 + 16);
   options.colors.forEach((color, index) => {
     const left = 72 + index * 360;
     ctx.fillStyle = color.hex;
-    ctx.fillRect(left, 1320, 72, 72);
+    ctx.fillRect(left, swatchTop, 72, 72);
     ctx.fillStyle = "#1A120C";
     ctx.font = "500 18px Outfit, sans-serif";
-    ctx.fillText(color.hex.toUpperCase(), left + 88, 1352);
+    ctx.fillText(color.hex.toUpperCase(), left + 88, swatchTop + 32);
     ctx.font = "400 18px Outfit, sans-serif";
     ctx.fillStyle = "#7A6A5C";
-    ctx.fillText(cmyk(color.hex), left + 88, 1382);
+    ctx.fillText(cmyk(color.hex), left + 88, swatchTop + 62);
   });
 
   ctx.fillStyle = "#7A6A5C";
@@ -681,7 +726,7 @@ export function techSheet(options: {
 
   // Background color if set
   if (options.bodyColor) {
-    ctx.fillStyle = options.bodyColor;
+    ctx.fillStyle = bodyFill(ctx, options.bodyColor, boxY, boxH) ?? "#fafaf9";
     ctx.fillRect(boxX, boxY, boxW, boxH);
   } else {
     ctx.fillStyle = "#fafaf9";
@@ -1007,7 +1052,9 @@ export function wrapPrint(source: HTMLCanvasElement | null, motif: HTMLCanvasEle
     byMotif = new Map();
     wrapCache.set(outer, byMotif);
   }
-  const motifKey = motif ? motifIds.get(motif) ?? motifIds.set(motif, `m${motifIds.size + 1}${Math.random().toString(36).slice(2, 6)}`).get(motif)! : "none";
+  const phrase = source ? phraseMeta.get(source) : undefined;
+  const phraseKey = phrase ? `${phrase.pos}/${phrase.ink}/${phrase.font}/${phrase.text}` : "";
+  const motifKey = (phraseKey ? `${phraseKey}|` : "") + (motif ? motifIds.get(motif) ?? motifIds.set(motif, `m${motifIds.size + 1}${Math.random().toString(36).slice(2, 6)}`).get(motif)! : "none");
   const cacheKey = `${motifKey}|${key}`;
   if (byMotif.has(cacheKey)) return byMotif.get(cacheKey) ?? null;
   const out = options ? composeMouldPrint(source, motif, options) : legacyWrap(source, motif, spanCover);
@@ -1235,9 +1282,38 @@ function logoStamp(image: HTMLCanvasElement): HTMLCanvasElement {
  * Size of one logo copy (mm). Two copies sit at 0° and 180°, so each gets half the way round;
  * on a short window the seam gap takes part of one half. A copy is always shrunk to fit, never cropped.
  */
-function copySize(wMm: number, hMm: number, slotMm: number, bandH: number, share: number) {
-  const fit = Math.min(slotMm * share / Math.max(0.01, wMm), (bandH * 0.82) / Math.max(0.01, hMm));
+function copySize(wMm: number, hMm: number, slotMm: number, bandH: number, share: number, bandShare = 0.82) {
+  const fit = Math.min(slotMm * share / Math.max(0.01, wMm), (bandH * bandShare) / Math.max(0.01, hMm));
   return { w: wMm * fit, h: hMm * fit };
+}
+
+/** A label painted from a phrase alone (no logo), which is laid out as the art itself. */
+const textOnly = new WeakSet<HTMLCanvasElement>();
+function isTextOnly(label: HTMLCanvasElement | null) {
+  return Boolean(label && textOnly.has(label));
+}
+
+/** One line of the phrase, centred in its lane, as large as the lane allows (never cropped). */
+function drawLane(ctx: CanvasRenderingContext2D, phrase: PhraseMeta, cx: number, top: number, w: number, h: number, plate: boolean) {
+  ctx.save();
+  let size = Math.max(6, Math.round(h * 0.82));
+  ctx.font = `600 ${size}px ${phrase.font}`;
+  while (size > 6 && ctx.measureText(phrase.text).width > w * 0.96) {
+    size -= 1;
+    ctx.font = `600 ${size}px ${phrase.font}`;
+  }
+  const width = Math.min(w, ctx.measureText(phrase.text).width);
+  if (plate) {
+    const pad = Math.max(2, size * 0.18);
+    ctx.fillStyle = "#ffffff";
+    roundRect(ctx, cx - width / 2 - pad * 1.6, top + (h - size) / 2 - pad, width + pad * 3.2, size + pad * 2, pad * 1.4);
+    ctx.fill();
+  }
+  ctx.fillStyle = phrase.ink;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(phrase.text, cx, top + h / 2 + size * 0.04);
+  ctx.restore();
 }
 
 function composeMouldPrint(source: HTMLCanvasElement | null, motif: HTMLCanvasElement | null, options: WrapOptions): HTMLCanvasElement | null {
@@ -1374,12 +1450,15 @@ function composeMouldPrint(source: HTMLCanvasElement | null, motif: HTMLCanvasEl
     return room;
   };
 
+  const phrase = source ? phraseMeta.get(source) ?? null : null;
+  // With a phrase, the logo stays inside its zone between the lanes (same size as without text).
+  const zoneH = phrase ? H * LOGO_BAND : H;
   type Stamp = { image: HTMLCanvasElement; box: { x: number; y: number; w: number; h: number }; wMm: number; hMm: number; plate: number };
-  const place = (stamp: Stamp, angles: number[]) => {
+  const place = (stamp: Stamp, angles: number[], zone = H) => {
     const dw = stamp.wMm * ppm;
     const dh = stamp.hMm * ppm;
     const pad = stamp.plate * ppm;
-    const maxLiftPx = Math.max(0, (H - dh) / 2 - 1);
+    const maxLiftPx = Math.max(0, (zone - dh) / 2 - 1 - (zone < H ? pad : 0));
     const cy = H / 2 - Math.max(-maxLiftPx, Math.min(maxLiftPx, art.lift * ppm));
     const draw = (cx: number) => {
       if (pad > 0) {
@@ -1409,10 +1488,28 @@ function composeMouldPrint(source: HTMLCanvasElement | null, motif: HTMLCanvasEl
     const rel = Math.max(0.4, labelScales.get(source as HTMLCanvasElement) ?? 1);
     const share = (texture ? 0.4 : win.full ? 0.9 : 0.96) * rel;
     const plateK = texture ? 0.12 : 0;
-    const size0 = copySize(box.w, box.h, slotFor(logoAngles) / (1 + plateK * 2), win.bandH / (1 + plateK * 2), share);
+    // Text-only labels keep their old size; a logo always leaves room for the phrase lanes.
+    const bandShare = isTextOnly(source) ? 0.82 : LOGO_BAND;
+    const size0 = copySize(box.w, box.h, slotFor(logoAngles) / (1 + plateK * 2), win.bandH / (1 + plateK * 2), share, bandShare);
     const fitted = clampArtPlace(art, win.bandH, size0.h);
     const size = { w: size0.w * fitted.scale, h: size0.h * fitted.scale };
-    place({ image: logoSource, box, wMm: size.w, hMm: size.h, plate: texture ? Math.max(2, Math.min(size.w, size.h) * plateK) : 0 }, logoAngles);
+    place({ image: logoSource, box, wMm: size.w, hMm: size.h, plate: texture ? Math.max(2, Math.min(size.w, size.h) * plateK) : 0 }, logoAngles, zoneH);
+    if (phrase) {
+      const laneW = Math.max(4, slotFor(logoAngles) * ppm * 0.94);
+      const laneH = H * ((1 - LOGO_BAND) / 2 - LANE_EDGE);
+      const lanes = phrase.pos === "both" ? [H * LANE_EDGE, H - H * LANE_EDGE - laneH] : phrase.pos === "bottom" ? [H - H * LANE_EDGE - laneH] : [H * LANE_EDGE];
+      for (const angle of logoAngles) {
+        const cx = xAt(angle);
+        for (const top of lanes) {
+          const draw = (x: number) => drawLane(ctx, phrase, x, top, laneW, laneH, Boolean(texture));
+          draw(cx);
+          if (win.full) {
+            if (cx - laneW / 2 < 0) draw(cx + W);
+            if (cx + laneW / 2 > W) draw(cx - W);
+          }
+        }
+      }
+    }
   }
   if (motifLogo && mbox) {
     const size0 = copySize(mbox.w, mbox.h, slotFor(motifAngles), win.bandH, win.full ? 0.9 : 0.96);

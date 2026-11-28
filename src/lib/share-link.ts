@@ -1,3 +1,4 @@
+import { isBody } from "@/lib/body-color";
 import type { Process } from "@/lib/catalog";
 import { ART_PLACE0, clampArtPlace, type ArtPlace } from "@/lib/art-place";
 
@@ -45,7 +46,7 @@ export function decodeShare(code: string): ShareDesign | null {
     const raw = JSON.parse(new TextDecoder().decode(unb64url(code))) as Record<string, unknown>;
     const process: Process = raw.p === "s" ? "serigrafia" : raw.p === "d" ? "digital" : "iml";
     const liquid = raw.l === "b" ? "beer" : raw.l === "r" ? "soda" : "none";
-    const body = typeof raw.b === "string" && /^#[0-9A-Fa-f]{6}$/.test(raw.b) ? raw.b : null;
+    const body = isBody(raw.b) ? raw.b : null;
     return {
       cupId: typeof raw.c === "string" && raw.c.length < 16 ? raw.c : "ECO50",
       process,

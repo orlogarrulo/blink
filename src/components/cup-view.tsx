@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { ART_PLACE0, clampArtPlace, type ArtPlace } from "@/lib/art-place";
 import { drinkLevels, renderCupGL } from "@/lib/cup-gl";
 import { printWindow, topMarginMm } from "@/lib/print-meta";
+import { bodyFill } from "@/lib/body-color";
 
 type Props = {
   texture: HTMLCanvasElement | null;
@@ -414,7 +415,7 @@ function drawCup2d(
       if (spec.body) {
         ctx.save();
         printPath();
-        ctx.fillStyle = spec.body;
+        ctx.fillStyle = bodyFill(ctx, spec.body, yPrintTop, topCy + bodyH - yPrintTop) ?? "#ffffff";
         ctx.globalAlpha = 0.96;
         ctx.fill();
         ctx.globalAlpha = 1;

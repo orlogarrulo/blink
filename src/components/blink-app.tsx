@@ -22,11 +22,14 @@ import {
 import { LANGS, detectLang, localeFor, text, type Lang } from "@/lib/copy";
 import { printMetaOf } from "@/lib/print-meta";
 import { ART_PLACE0, type ArtPlace } from "@/lib/art-place";
-import { canvasPdf, cmyk, composeLogos, composePattern, dominantColors, downloadBlob, openPdf, paintLabel, sheetCanvas, techSheet, tintCanvas, viewsSheet, wrapPrint, heroSheet } from "@/lib/print";
+import { canvasPdf, carryLabelMeta, cmyk, composeLogos, composePattern, dominantColors, downloadBlob, openPdf, paintLabel, sheetCanvas, techSheet, tintCanvas, viewsSheet, wrapPrint, heroSheet, type PhrasePos } from "@/lib/print";
 import { qrCanvas } from "@/lib/qr-mark";
 import { shareUrl } from "@/lib/share-link";
-import { BOX_CUPS, airFreight, chargedQty, SHEET_KZ_PER_EUR, cupWeightScale } from "@/lib/freight";
-import { dialForMarket, detectMarket, KZ_PER_EUR, pricePair, type Market } from "@/lib/money";
+import { BOX_CUPS, airFreight, chargedQty, cupWeightScale } from "@/lib/freight";
+import { dialForMarket, formatKz, getKzPerEur, loadCurrency, money, saveCurrency, type Market } from "@/lib/money";
+import { loadCatalog, useCatalogVersion } from "@/lib/catalog-store";
+import { bodyCss, parseBody } from "@/lib/body-color";
+import { deleteProject, listProjects, saveProject, type SavedProject } from "@/lib/projects";
 import { DIALS } from "@/lib/phone";
 import { rasterizeSvg, traceCanvas } from "@/lib/trace";
 
@@ -48,6 +51,10 @@ type Draft = {
   sample: SampleId | null;
   phrase: string;
   font: FontId;
+  /** Phrase colour; null = the logo's main colour. */
+  textInk?: string | null;
+  /** Phrase lane next to the logo: above, below or both. */
+  textPos?: PhrasePos;
 };
 
 const SAMPLES: { id: SampleId; name: string; note: string; fit: Fit; scale: number; flat: boolean }[] = [
@@ -72,19 +79,12 @@ function fontCss(id: string) {
   return FONTS.find((item) => item.id === id)?.css ?? FONTS[0].css;
 }
 
-function moneyKz(value: number) {
-  return `${new Intl.NumberFormat("pt-PT", { maximumFractionDigits: 0 }).format(Math.round(value))} Kz`;
+/** A price in the currency chosen in the header only (Kz or €). */
+function SheetMoney({ kz, market, inline = false }: { kz: number; market: Market; inline?: boolean }) {
+  return <span className={inline ? "inline" : "block leading-tight"}>{money(kz, market)}</span>;
 }
 
-function SheetMoney({ kz, inline = false }: { kz: number; inline?: boolean }) {
-  const euro = new Intl.NumberFormat("pt-PT", { style: "currency", currency: "EUR" }).format(kz / SHEET_KZ_PER_EUR);
-  return (
-    <span className={inline ? "inline-flex items-baseline gap-2" : "block leading-tight"}>
-      <span>{euro}</span>
-      <span className="text-xs text-muted">{moneyKz(kz)}</span>
-    </span>
-  );
-}
+const TEXT_POS: PhrasePos[] = ["top", "bottom", "both"];
 
 const EMPTY: Draft = {
   event: "",
@@ -99,6 +99,8 @@ const EMPTY: Draft = {
   sample: null,
   phrase: "",
   font: "outfit",
+  textInk: null,
+  textPos: "bottom",
 };
 
 function loadDraft(): Draft {
@@ -110,7 +112,9 @@ function loadDraft(): Draft {
     const dial = typeof parsed.dial === "string" && DIALS.includes(parsed.dial) ? parsed.dial : EMPTY.dial;
     const font = FONTS.some((item) => item.id === parsed.font) ? (parsed.font as FontId) : EMPTY.font;
     const phrase = typeof parsed.phrase === "string" ? parsed.phrase.slice(0, 60) : "";
-    return { ...EMPTY, ...parsed, sample, dial, font, phrase };
+    const textInk = typeof parsed.textInk === "string" && /^#[0-9A-Fa-f]{6}$/.test(parsed.textInk) ? parsed.textInk : null;
+    const textPos = TEXT_POS.includes(parsed.textPos as PhrasePos) ? (parsed.textPos as PhrasePos) : "bottom";
+    return { ...EMPTY, ...parsed, sample, dial, font, phrase, textInk, textPos };
   } catch {
     return EMPTY;
   }
@@ -163,9 +167,11 @@ export function BlinkApp() {
   const [error, setError] = useState("");
   const [compareId, setCompareId] = useState("ECO12");
   const [compareQty, setCompareQty] = useState(400);
-  const [right, setRight] = useState<{ phrase: string; font: FontId; sample: SampleId | null; tint: string | null; cupTint: string | null; process: Process | null; cover360: boolean }>({
+  const [right, setRight] = useState<{ phrase: string; font: FontId; sample: SampleId | null; tint: string | null; cupTint: string | null; process: Process | null; cover360: boolean; textInk: string | null; textPos: PhrasePos }>({
     phrase: "",
     font: "outfit",
+    textInk: null,
+    textPos: "bottom",
     sample: null,
     tint: null,
     cupTint: null,
@@ -204,16 +210,25 @@ export function BlinkApp() {
   const [customColors, setCustomColors] = useState<Record<string, { rgb: string; cmyk: string }>>({});
   const [rightLiquid, setRightLiquid] = useState<"none" | "beer" | "soda">("none");
   const [quote, setQuote] = useState<{ cupId: string; qty: number; unitKz: number; freightKz: number; lotKz: number } | null>(null);
-  const [market, setMarket] = useState<Market>("KZ");
+  const [market, setMarketState] = useState<Market>("KZ");
+  const [projects, setProjects] = useState<SavedProject[]>([]);
+  const [projectNote, setProjectNote] = useState("");
+  const catalogVersion = useCatalogVersion();
+  function setMarket(next: Market) {
+    setMarketState(next);
+    saveCurrency(next);
+  }
   const [lang, setLang] = useState<Lang>("pt");
   const shotsRef = useRef<((turns: number[], side?: "beer" | "soda") => HTMLCanvasElement[]) | null>(null);
   const t = text(lang);
   const locale = localeFor(lang);
 
   useEffect(() => {
+    loadCatalog();
     const saved = loadDraft();
-    const next = detectMarket();
-    setMarket(next);
+    const next = loadCurrency();
+    setMarketState(next);
+    setProjects(listProjects());
     setLang(detectLang());
     if (!saved.phone && saved.dial === "+244") saved.dial = dialForMarket(next);
     setDraft(saved);
@@ -245,13 +260,12 @@ export function BlinkApp() {
   const orderQty = leftQuote.charge + rightQuote.charge;
   const orderLot = leftQuote.lot + rightQuote.lot;
   const orderDoor = leftQuote.door + rightQuote.door;
-  const finalLot = pricePair(orderLot, market);
+  const finalLot = money(orderLot, market);
   const delivery = deliveryDate(Math.max(leftQuote.charge, rightQuote.charge, 1), process);
   const deliveryLabel = new Intl.DateTimeFormat(locale, { dateStyle: "long" }).format(delivery);
   const late = draft.eventDate ? delivery > new Date(`${draft.eventDate}T23:59:00`) : false;
-  const airMoney = orderDoor
-    ? `${new Intl.NumberFormat("pt-PT", { style: "currency", currency: "EUR" }).format(orderDoor / SHEET_KZ_PER_EUR)} · ${new Intl.NumberFormat("pt-PT", { maximumFractionDigits: 0 }).format(Math.round(orderDoor))} Kz`
-    : "";
+  const airMoney = orderDoor ? money(orderDoor, market) : "";
+  void catalogVersion;
 
   useEffect(() => {
     if (ready && process !== draft.process) setDraft((current) => ({ ...current, process }));
@@ -260,7 +274,8 @@ export function BlinkApp() {
   const baseLabels = useMemo(() => {
     const phrase = draft.phrase.trim();
     if (!area || (!art && !pattern && !phrase) || typeof document === "undefined") return null;
-    return cachedLabels([art, pattern], `${area.w}x${area.h}/${area.rim ?? ""}/${process}/${draft.font}/${phrase}`, () => {
+    const lane = { ink: draft.textInk ?? null, pos: draft.textPos ?? "bottom" };
+    return cachedLabels([art, pattern], `${area.w}x${area.h}/${area.rim ?? ""}/${process}/${draft.font}/${phrase}/${lane.ink ?? ""}/${lane.pos}`, () => {
     const family = fontCss(draft.font);
     const ppm = Math.min(12, Math.max(8, Math.round(1800 / area.w)));
     const probe = paintLabel({
@@ -278,6 +293,7 @@ export function BlinkApp() {
       palette: [],
       inkCount: 2,
       fit: "contain",
+      phraseLane: lane,
     });
     const found = dominantColors(probe, 4);
     const palette = found.length > 0 ? found : ["#1A120C"];
@@ -285,6 +301,7 @@ export function BlinkApp() {
     for (const sample of SAMPLES) {
       if (sample.id === "vetor") continue;
       map[sample.id] = paintLabel({
+        phraseLane: lane,
         area,
         ppm,
         image: art,
@@ -304,7 +321,7 @@ export function BlinkApp() {
     }
     return map;
     });
-  }, [area, art, pattern, process, draft.phrase, draft.font]);
+  }, [area, art, pattern, process, draft.phrase, draft.font, draft.textInk, draft.textPos]);
 
   const labels = useMemo(() => {
     if (!baseLabels) return null;
@@ -337,6 +354,7 @@ export function BlinkApp() {
         }
         void rasterizeSvg(traced.svg, baseLabels.medida.width, baseLabels.medida.height).then((canvas) => {
           if (cancel) return;
+          carryLabelMeta(baseLabels.medida, canvas);
           setVectorLabel(canvas);
           setTracing(false);
         });
@@ -349,6 +367,34 @@ export function BlinkApp() {
       window.clearTimeout(timer);
     };
   }, [baseLabels, process]);
+
+  /** Everything needed to reopen the design (no uploaded files). */
+  function snapshot(): Record<string, unknown> {
+    return { v: 1, draft, right, compareId, compareQty, tint, cupTint, liquid, rightLiquid, place, rightPlace };
+  }
+
+  function storeProject() {
+    setProjects(saveProject(draft.event || t.unnamed, snapshot()));
+    setProjectNote(t.projectSaved);
+  }
+
+  function openProject(item: SavedProject) {
+    const state = item.state as Partial<ReturnType<typeof snapshot>> & Record<string, unknown>;
+    if (state.draft && typeof state.draft === "object") {
+      const restored = { ...EMPTY, ...(state.draft as Partial<Draft>) };
+      setDraft(restored);
+    }
+    if (state.right && typeof state.right === "object") setRight((current) => ({ ...current, ...(state.right as Partial<typeof current>) }));
+    if (typeof state.compareId === "string") setCompareId(state.compareId);
+    if (typeof state.compareQty === "number") setCompareQty(state.compareQty);
+    setTint(typeof state.tint === "string" ? state.tint : null);
+    setCupTint(typeof state.cupTint === "string" ? state.cupTint : null);
+    if (state.liquid === "none" || state.liquid === "beer" || state.liquid === "soda") setLiquid(state.liquid);
+    if (state.rightLiquid === "none" || state.rightLiquid === "beer" || state.rightLiquid === "soda") setRightLiquid(state.rightLiquid);
+    if (state.place && typeof state.place === "object") setPlace({ ...ART_PLACE0, ...(state.place as Partial<ArtPlace>) });
+    if (state.rightPlace && typeof state.rightPlace === "object") setRightPlace({ ...ART_PLACE0, ...(state.rightPlace as Partial<ArtPlace>) });
+    setProjectNote("");
+  }
 
   function patch(partial: Partial<Draft>) {
     setDraft((current) => ({ ...current, ...partial }));
@@ -392,7 +438,8 @@ export function BlinkApp() {
     const image = rightArt;
     const motif = rightPattern;
     if (!otherArea || (!image && !motif && !phrase) || typeof document === "undefined") return null;
-    return cachedLabels([image, motif], `${otherArea.w}x${otherArea.h}/${otherArea.rim ?? ""}/${otherProcess}/${right.font}/${phrase}`, () => {
+    const lane = { ink: right.textInk, pos: right.textPos };
+    return cachedLabels([image, motif], `${otherArea.w}x${otherArea.h}/${otherArea.rim ?? ""}/${otherProcess}/${right.font}/${phrase}/${lane.ink ?? ""}/${lane.pos}`, () => {
     const family = fontCss(right.font);
     const ppm = Math.min(12, Math.max(8, Math.round(1800 / otherArea.w)));
     const probe = paintLabel({
@@ -410,6 +457,7 @@ export function BlinkApp() {
       palette: [],
       inkCount: 2,
       fit: "contain",
+      phraseLane: lane,
     });
     const found = dominantColors(probe, 4);
     const palette = found.length > 0 ? found : ["#1A120C"];
@@ -417,6 +465,7 @@ export function BlinkApp() {
     for (const sample of SAMPLES) {
       if (sample.id === "vetor") continue;
       map[sample.id] = paintLabel({
+        phraseLane: lane,
         area: otherArea,
         ppm,
         image,
@@ -436,7 +485,7 @@ export function BlinkApp() {
     }
     return map;
     });
-  }, [otherArea, rightArt, rightPattern, right.phrase, right.font, otherProcess]);
+  }, [otherArea, rightArt, rightPattern, right.phrase, right.font, otherProcess, right.textInk, right.textPos]);
   const rightLabels = useMemo(() => {
     if (!rightBase) return null;
     if (!right.tint) return rightBase;
@@ -554,8 +603,7 @@ export function BlinkApp() {
     const itemProcess = side === "beer" ? process : otherProcess;
     const texture = side === "beer" ? shown : rightShown;
     const numbers = liveQuote(item, side === "beer" ? draft.qty : compareQty);
-    const unitMoney = pricePair(numbers.finalUnit, market);
-    const lotMoney = pricePair(numbers.lot, market);
+    const lane = side === "beer" ? { ink: draft.textInk ?? null, pos: draft.textPos ?? "bottom" } : { ink: right.textInk, pos: right.textPos };
     if (!itemArea || (!image && !motif && !phrase) || !texture) return null;
     await document.fonts.ready;
     const sample = sampleById(sampleId === "vetor" ? "medida" : sampleId);
@@ -574,9 +622,11 @@ export function BlinkApp() {
       palette: [],
       inkCount: 2,
       fit: "contain",
+      phraseLane: lane,
     });
     const palette = dominantColors(probe, 4);
     let printLabel = paintLabel({
+      phraseLane: lane,
       area: itemArea,
       ppm: 300 / 25.4,
       image,
@@ -617,7 +667,7 @@ export function BlinkApp() {
       bodyColor: body,
       delivery: when,
       eventDate: draft.eventDate,
-      priceLine: `${unitMoney.primary} (${unitMoney.secondary}) / un  ·  ${lotMoney.primary} (${lotMoney.secondary})`,
+      priceLine: `${money(numbers.finalUnit, market)} / un  ·  ${money(numbers.lot, market)}`,
       freightNote: `aéreo  ·  ${numbers.charge} ${item.name}`,
     });
     const tech = techSheet({
@@ -682,9 +732,23 @@ export function BlinkApp() {
 
   return (
     <main className="mx-auto min-h-dvh w-full max-w-6xl overflow-x-hidden px-4 pb-[max(4rem,env(safe-area-inset-bottom))] pt-[max(1.25rem,env(safe-area-inset-top))] sm:px-6">
-      <header className="flex w-full flex-wrap items-end justify-between gap-3">
+      <header className="flex w-full flex-wrap items-end justify-center gap-3 text-center sm:justify-between sm:text-left">
         <BlinkLogo slogan={t.slogan} />
-        <div className="ml-auto flex items-center gap-1" role="group" aria-label={t.language}>
+        <div className="flex flex-wrap items-center justify-center gap-2 sm:ml-auto sm:justify-end">
+        <div className="flex items-center gap-1 rounded-full bg-card p-0.5" role="group" aria-label={t.currency}>
+          {(["KZ", "EUR"] as const).map((id) => (
+            <button
+              key={id}
+              type="button"
+              aria-pressed={market === id}
+              onClick={() => setMarket(id)}
+              className={`min-h-11 min-w-11 rounded-full px-3 text-sm ${market === id ? "bg-ink text-paper" : "text-ink"}`}
+            >
+              {id === "KZ" ? "Kz" : "€"}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-1" role="group" aria-label={t.language}>
           {LANGS.map((item) => (
             <button
               key={item.id}
@@ -697,12 +761,13 @@ export function BlinkApp() {
             </button>
           ))}
         </div>
+        </div>
       </header>
 
-      <section className="mt-6">
+      <section className="mt-6 text-center sm:text-left">
         <h2 className="font-display text-2xl">{t.plainTitle}</h2>
         <p className="mt-1 text-sm text-muted">{t.plainLead}</p>
-        <div className="mt-3 flex gap-2">
+        <div className="mt-3 flex justify-center gap-2 sm:justify-start">
           <button type="button" onClick={() => setGridTarget("cup1")} className={`min-h-11 rounded-full px-4 text-sm ${gridTarget === "cup1" ? "bg-ink text-paper" : "bg-card border border-line"}`}>Selecionar Copo 1</button>
           <button type="button" onClick={() => setGridTarget("cup2")} className={`min-h-11 rounded-full px-4 text-sm ${gridTarget === "cup2" ? "bg-urucum text-paper" : "bg-card border border-line"}`}>Selecionar Copo 2</button>
         </div>
@@ -751,8 +816,8 @@ export function BlinkApp() {
         </ul>
       </section>
 
-      <div className="mt-8 grid items-start gap-6 lg:grid-cols-[minmax(0,1.25fr)_minmax(22rem,0.82fr)]">
-        <div className="space-y-6">
+      <div className="mt-8 grid grid-cols-[minmax(0,1fr)] items-start gap-6 lg:grid-cols-[minmax(0,1.25fr)_minmax(22rem,0.82fr)]">
+        <div className="min-w-0 space-y-6">
         <div className="space-y-4">
           {error ? <p className="border-l-4 border-pitanga pl-3 text-sm">{error}</p> : null}
           {(art || pattern || draft.phrase.trim()) && labels ? (
@@ -870,7 +935,7 @@ export function BlinkApp() {
                   <span className="absolute bottom-2 left-2 rounded bg-white/80 px-2 py-0.5 text-xs text-ink">{t.cup2}</span>
                 </div>
               </div>
-              <div className="grid grid-cols-2 items-start gap-2 bg-white px-2 py-3">
+              <div className="grid grid-cols-1 items-start gap-2 bg-white px-2 py-3 sm:grid-cols-2">
                 <div className="min-w-0 rounded-2xl border border-line p-2">
                   <label className="flex flex-col gap-1 text-xs text-muted">
                     {t.cup1}
@@ -916,6 +981,16 @@ export function BlinkApp() {
                       <button key={item.id} type="button" aria-pressed={draft.font === item.id} onClick={() => patch({ font: item.id })} className={`min-h-11 rounded-full px-3 text-sm ${draft.font === item.id ? "bg-ink text-paper" : "bg-card"}`} style={{ fontFamily: item.css }}>{item.label}</button>
                     ))}
                   </div>
+                  {draft.phrase.trim() ? (
+                    <TextControls
+                      t={t}
+                      ink={draft.textInk ?? null}
+                      pos={draft.textPos ?? "bottom"}
+                      withLogo={logos.length > 0}
+                      onInk={(hex) => patch({ textInk: hex })}
+                      onPos={(pos) => patch({ textPos: pos })}
+                    />
+                  ) : null}
                   <p className="mt-2 text-xs text-muted">{t.inkLogo}</p>
                   <div className="mt-1 flex flex-wrap gap-1">
                     <button type="button" className={`min-h-11 rounded-full border px-3 text-xs ${tint === null ? "border-ink" : "border-line"}`} onClick={() => setTint(null)}>{t.original}</button>
@@ -941,8 +1016,8 @@ export function BlinkApp() {
                   {leftQuote.charge === 0 ? <p className="mt-2 text-sm text-muted">{t.leftOut}</p> : (
                     <>
                       <p className="mt-2 text-sm">{leftQuote.charge.toLocaleString(locale)} · {leftQuote.boxes} {t.boxes}</p>
-                      <p className="text-sm"><SheetMoney inline kz={leftQuote.finalUnit} /> {t.perUnit}</p>
-                      <p className="font-medium"><SheetMoney inline kz={leftQuote.lot} /> {t.inLot}</p>
+                      <p className="text-sm"><SheetMoney inline market={market} kz={leftQuote.finalUnit} /> {t.perUnit}</p>
+                      <p className="font-medium"><SheetMoney inline market={market} kz={leftQuote.lot} /> {t.inLot}</p>
                       <button type="button" className="mt-2 min-h-11 w-full rounded-full bg-ink text-sm text-paper" onClick={() => void saveCard("beer")}>{t.addPdf}</button>
                     </>
                   )}
@@ -992,6 +1067,16 @@ export function BlinkApp() {
                       <button key={item.id} type="button" aria-pressed={right.font === item.id} onClick={() => setRight((current) => ({ ...current, font: item.id }))} className={`min-h-11 rounded-full px-3 text-sm ${right.font === item.id ? "bg-ink text-paper" : "bg-card"}`} style={{ fontFamily: item.css }}>{item.label}</button>
                     ))}
                   </div>
+                  {right.phrase.trim() ? (
+                    <TextControls
+                      t={t}
+                      ink={right.textInk}
+                      pos={right.textPos}
+                      withLogo={rightLogos.length > 0}
+                      onInk={(hex) => setRight((current) => ({ ...current, textInk: hex }))}
+                      onPos={(pos) => setRight((current) => ({ ...current, textPos: pos }))}
+                    />
+                  ) : null}
                   <p className="mt-2 text-xs text-muted">{t.inkLogo}</p>
                   <div className="mt-1 flex flex-wrap gap-1">
                     <button type="button" className={`min-h-11 rounded-full border px-3 text-xs ${right.tint === null ? "border-ink" : "border-line"}`} onClick={() => setRight((current) => ({ ...current, tint: null }))}>{t.original}</button>
@@ -1017,8 +1102,8 @@ export function BlinkApp() {
                   {rightQuote.charge === 0 ? <p className="mt-2 text-sm text-muted">{t.leftOut}</p> : (
                     <>
                       <p className="mt-2 text-sm">{rightQuote.charge.toLocaleString(locale)} · {rightQuote.boxes} {t.boxes}</p>
-                      <p className="text-sm"><SheetMoney inline kz={rightQuote.finalUnit} /> {t.perUnit}</p>
-                      <p className="font-medium"><SheetMoney inline kz={rightQuote.lot} /> {t.inLot}</p>
+                      <p className="text-sm"><SheetMoney inline market={market} kz={rightQuote.finalUnit} /> {t.perUnit}</p>
+                      <p className="font-medium"><SheetMoney inline market={market} kz={rightQuote.lot} /> {t.inLot}</p>
                       <button type="button" className="mt-2 min-h-11 w-full rounded-full bg-ink text-sm text-paper" onClick={() => void saveCard("soda")}>{t.addPdf}</button>
                     </>
                   )}
@@ -1059,7 +1144,7 @@ export function BlinkApp() {
             </section>
           ) : null}
         </div>
-        <div className="panel-in space-y-6 lg:sticky lg:top-4">
+        <div className="panel-in min-w-0 space-y-6 lg:sticky lg:top-4">
         <aside className="rounded-3xl border border-line bg-card p-4">
           <h2 className="font-display text-2xl">{t.sheet}</h2>
           <div className="mt-3 space-y-3">
@@ -1099,11 +1184,31 @@ export function BlinkApp() {
             <Field label={t.eventDate}>
               <input className={`${control} min-w-0`} type="date" value={draft.eventDate} onChange={(event) => patch({ eventDate: event.target.value })} />
             </Field>
+            <details className="rounded-2xl border border-line bg-paper px-3 py-2 text-sm">
+              <summary className="min-h-11 cursor-pointer py-2.5 font-medium">{t.projectsTitle}{projects.length > 0 ? ` · ${projects.length}` : ""}</summary>
+              <p className="text-xs text-muted">{t.projectsLead}</p>
+              <button type="button" className="mt-2 min-h-11 w-full rounded-full bg-ink text-sm text-paper" onClick={storeProject}>{t.saveProject}</button>
+              {projectNote ? <p className="mt-1 text-xs text-muted" role="status">{projectNote}</p> : null}
+              {projects.length === 0 ? <p className="mt-2 text-xs text-muted">{t.noProjects}</p> : (
+                <ul className="mt-2 divide-y divide-line">
+                  {projects.map((item) => (
+                    <li key={item.id} className="flex items-center gap-2 py-1">
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate">{item.name}</span>
+                        <span className="block text-xs text-muted">{new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(new Date(item.savedAt))}</span>
+                      </span>
+                      <button type="button" className="min-h-11 shrink-0 px-2 text-sm underline underline-offset-4" onClick={() => openProject(item)}>{t.openProject}</button>
+                      <button type="button" className="min-h-11 shrink-0 px-2 text-sm text-muted" onClick={() => setProjects(deleteProject(item.id))}>{t.remove}</button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </details>
             <dl className="divide-y divide-line overflow-hidden rounded-2xl border border-line text-sm">
               <div className="flex items-baseline justify-between gap-4 bg-paper px-3 py-3">
                 <dt className="text-muted">{t.final}</dt>
                 <dd className="min-w-0 text-right break-words">
-                  <span key={finalLot.primary} className="final-figure font-display text-2xl leading-none">{orderQty > 0 ? finalLot.primary : "—"}</span>
+                  <span key={finalLot} className="final-figure font-display text-2xl leading-none">{orderQty > 0 ? finalLot : "—"}</span>
                   <span className="mt-1 block text-muted">{orderQty > 0 ? `${orderQty.toLocaleString(locale)} ${t.cups}` : t.leftOut}</span>
                 </dd>
               </div>
@@ -1115,7 +1220,7 @@ export function BlinkApp() {
                   <dt className="text-muted">{label} · {name}</dt>
                   <dd className="min-w-0 text-right break-words">
                     {quote.charge.toLocaleString(locale)} {t.cups}
-                    <span className="mt-0.5 block"><SheetMoney kz={quote.lot} /></span>
+                    <span className="mt-0.5 block"><SheetMoney market={market} kz={quote.lot} /></span>
                   </dd>
                 </div>
               ))}
@@ -1157,7 +1262,7 @@ export function BlinkApp() {
                 {rightQuote.charge > 0 ? ` · ${other.name} · ${rightQuote.charge.toLocaleString(locale)} ${t.cups}` : ""}
               </p>
               <p className="text-sm">
-                {orderQty > 0 ? finalLot.primary : "—"} {t.inLot}
+                {orderQty > 0 ? finalLot : "—"} {t.inLot}
                 <span className="text-muted"> · {t.final}</span>
               </p>
               <ul className="flex flex-wrap gap-3">
@@ -1172,7 +1277,7 @@ export function BlinkApp() {
               <button type="button" onClick={() => void saveAttached()} className="min-h-11 w-full rounded-full bg-ink text-sm font-medium text-paper">
                 {t.download}{chosenId === "vetor" ? ` ${t.andSvg}` : ""}
               </button>
-              <p className="text-xs leading-relaxed text-muted">{t.estimate} {KZ_PER_EUR} Kz.</p>
+              <p className="text-xs leading-relaxed text-muted">{t.estimate} 1 € = {formatKz(getKzPerEur())}.</p>
             </div>
           ) : null}
         </div>
@@ -1247,6 +1352,7 @@ export function BlinkApp() {
         title={t.otherColor}
         lead={t.otherColorLead}
         closeLabel={t.close}
+        mix={t.mix}
         onColor={(hex) => {
           if (colorDialog === "cup2") setRight((current) => ({ ...current, cupTint: hex }));
           else setCupTint(hex);
@@ -1316,7 +1422,9 @@ export function BlinkApp() {
           </div>
         );
       })()}
-      <footer className="mt-16 text-center text-sm text-muted">© BLINK 2026</footer>
+      <footer className="mt-16 text-center text-sm text-muted">
+        © BLINK 2026 · <a href="/gestao" className="underline-offset-4 hover:underline">{t.gestao}</a>
+      </footer>
     </main>
   );
 }
@@ -1326,7 +1434,7 @@ function BlinkLogo({ slogan }: { slogan: string }) {
     <div>
       <svg
         viewBox="0 0 871.47 244.94"
-        className="h-11 w-auto text-ink sm:h-12"
+        className="mx-auto h-11 w-auto text-ink sm:mx-0 sm:h-12"
         role="img"
         aria-label="BLINK"
       >
@@ -1426,7 +1534,24 @@ function WindowPlate({ area, process, canvas, caption, cupColor = null }: { area
   return (
     <figure className="border-t border-line px-4 py-4">
       <svg viewBox={`0 0 ${width} ${height}`} className="w-full" role="img" aria-label={caption.plate}>
-        <rect x={pad} y={pad} width={inner} height={innerH} fill={cupColor || "var(--color-paper)"} />
+        {(() => {
+          const spec = parseBody(cupColor);
+          if (!spec || spec.mode === "solid") return <rect x={pad} y={pad} width={inner} height={innerH} fill={spec?.colors[0] || "var(--color-paper)"} />;
+          const id = `plate-${spec.mode}-${spec.colors.join("").replace(/#/g, "")}`;
+          const n = spec.colors.length;
+          return (
+            <>
+              <defs>
+                <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
+                  {spec.mode === "grad"
+                    ? spec.colors.map((hex, i) => <stop key={i} offset={i / (n - 1)} stopColor={hex} />)
+                    : spec.colors.flatMap((hex, i) => [<stop key={`a${i}`} offset={i / n} stopColor={hex} />, <stop key={`b${i}`} offset={(i + 1) / n} stopColor={hex} />])}
+                </linearGradient>
+              </defs>
+              <rect x={pad} y={pad} width={inner} height={innerH} fill={`url(#${id})`} />
+            </>
+          );
+        })()}
         {src ? <image href={src} x={pad} y={pad} width={inner} height={innerH} preserveAspectRatio="xMidYMid meet" /> : null}
         <rect x={pad} y={pad} width={inner} height={innerH} fill="none" stroke="var(--color-ink)" strokeWidth="1.5" />
         <rect x={pad + insetX} y={pad + insetY} width={inner - insetX * 2} height={innerH - insetY * 2} fill="none" stroke="var(--color-ipe)" strokeDasharray="7 5" strokeWidth="1.5" />
@@ -1445,7 +1570,33 @@ function WindowPlate({ area, process, canvas, caption, cupColor = null }: { area
   );
 }
 
-function customSwatch(hex: string | null): { background: string; borderStyle: "solid" } | undefined {
-  if (!hex || STOCK.some((swatch) => swatch.hex.toLowerCase() === hex.toLowerCase())) return undefined;
-  return { background: hex, borderStyle: "solid" };
+function customSwatch(body: string | null): { background: string; borderStyle: "solid" } | undefined {
+  if (!body || STOCK.some((swatch) => swatch.hex.toLowerCase() === body.toLowerCase())) return undefined;
+  const background = bodyCss(body);
+  return background ? { background, borderStyle: "solid" } : undefined;
+}
+
+/** Phrase colour (same swatches as the logo and cup) and its lane: above, below or both. */
+function TextControls({ t, ink, pos, withLogo, onInk, onPos }: { t: ReturnType<typeof text>; ink: string | null; pos: PhrasePos; withLogo: boolean; onInk: (hex: string | null) => void; onPos: (pos: PhrasePos) => void }) {
+  return (
+    <>
+      {withLogo ? (
+        <>
+          <p className="mt-2 text-xs text-muted">{t.textPos}</p>
+          <div className="mt-1 grid grid-cols-3 gap-1" role="group" aria-label={t.textPos}>
+            {([["top", t.textTop], ["bottom", t.textBottom], ["both", t.textBoth]] as const).map(([id, label]) => (
+              <button key={id} type="button" aria-pressed={pos === id} onClick={() => onPos(id)} className={`min-h-11 rounded-full px-1 text-xs ${pos === id ? "bg-ink text-paper" : "bg-card"}`}>{label}</button>
+            ))}
+          </div>
+        </>
+      ) : null}
+      <p className="mt-2 text-xs text-muted">{t.textColor}</p>
+      <div className="mt-1 flex flex-wrap gap-1">
+        <button type="button" className={`min-h-11 rounded-full border px-3 text-xs ${ink === null ? "border-ink" : "border-line"}`} onClick={() => onInk(null)}>{t.original}</button>
+        {STOCK.map((swatch) => (
+          <button key={`t-${swatch.hex}`} type="button" aria-label={`${t.textColor} ${swatch.name}`} className={`h-9 w-9 rounded-full border ${ink === swatch.hex ? "border-ink ring-2 ring-ink" : "border-line"}`} style={{ background: swatch.hex }} onClick={() => onInk(swatch.hex)} />
+        ))}
+      </div>
+    </>
+  );
 }
